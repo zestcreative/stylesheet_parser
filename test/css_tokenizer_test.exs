@@ -9,10 +9,15 @@ defmodule CssTokenizerTest do
       """
 
       {:ok, tokens} = CssTokenizer.tokenize(css)
-      tokens
-      |> IO.inspect
-      |> CssTokenizer.Stylesheet.build_at_rule
-      |> IO.inspect
+      {:ok, {at_rule, _rest}} = CssTokenizer.Stylesheet.build_at_rule(tokens)
+
+      refute at_rule.block
+      refute at_rule.value
+      assert at_rule.name == "@import"
+      assert at_rule.prelude == [
+        {:whitespace, " "},
+        {:string, ~s|"https://www.w3.org/StyleSheets/TR/2016/base.css"|}
+      ]
     end
 
     test "returns atrule from @media" do
@@ -24,6 +29,29 @@ defmodule CssTokenizerTest do
       }
       """
 
+      {:ok, tokens} = CssTokenizer.tokenize(css)
+      {:ok, at_rule, _rest} = CssTokenizer.Stylesheet.build_at_rule(tokens)
+
+      refute at_rule.block
+      refute at_rule.value
+      assert at_rule.name == "@media"
+      assert at_rule.block == ""
+      assert at_rule.prelude == [
+        {:whitespace, " "},
+        {:ident, "only"},
+        {:whitespace, " "},
+        {:ident, "screen"},
+        {:whitespace, " "},
+        {:ident, "and"},
+        {:whitespace, " "},
+        {:lparen, "("},
+        {:ident, "max-width"},
+        {:colon, ":"},
+        {:whitespace, " "},
+        {:dimension, ["600", "px"]},
+        {:rparen, ")"},
+        {:whitespace, " "}
+      ]
     end
   end
 

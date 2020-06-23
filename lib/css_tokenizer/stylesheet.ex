@@ -22,11 +22,11 @@ defmodule CssTokenizer.Stylesheet do
   end
 
   defmodule Function do
-    defstruct [:block]
+    defstruct [:name, :value]
   end
 
   defmodule SimpleBlock do
-    defstruct [:block]
+    defstruct [value: []]
   end
 
   defmodule Dimension do
@@ -51,7 +51,7 @@ defmodule CssTokenizer.Stylesheet do
   def do_parse_rules([], acc, _), do: acc
 
   def do_parse_rules([{:at_keyword, _} | _rest] = tokens, acc) do
-    {at_rule, tokens} = build_at_rule(tokens)
+    {:ok, at_rule, tokens} = build_at_rule(tokens)
     do_parse_rules(tokens, [at_rule | acc])
   end
 
@@ -78,25 +78,28 @@ defmodule CssTokenizer.Stylesheet do
     value to the at-rule’s prelude.
   """
   def build_at_rule([{:at_keyword, name} | tokens]) do
-    tokens
-    |> Stream.transform({[], []}, fn
+    Enum.reduce_while(tokens, {:ok, %AtRule{name: name}, tokens}, fn
       nil, _ ->
-        {:halt, :premature_eof}
-      {:semicolon, _}, {prelude, rest_tokens} ->
-        {:halt, [{%AtRule{name: name, prelude: prelude}, rest_tokens}]}
-      {:lcurly, _}, {prelude, rest_tokens} ->
-        # {simple_block, rest_tokens} =
-        #   build_simple_block(rest_tokens)
-        simple_block = nil
+        {:halt, {:error, :premature_eof}}
 
-        {:halt, [{%AtRule{
-                    name: name, block: simple_block,
-                    prelude: prelude
-                  }, rest_tokens}]}
-      token, {prelude, rest_tokens} ->
-        {rest_tokens, {[token | prelude], rest_tokens}}
+      _token, {:ok, at_rule, [_ | rest], 1} -> {:cont, {:ok, at_rule, rest}}
+      _token, {:ok, at_rule, [_ | rest], i} when i > 0 ->
+        # we're inside a component value, skip it
+        {:cont, {:ok, at_rule, rest, i - 1}}
+
+      {:semicolon, _}, {:ok, at_rule, [_ | rest]} ->
+        {:halt, {:ok, %{at_rule | prelude: Enum.reverse(at_rule.prelude)}, rest}}
+
+      {:lcurly, _}, {:ok, at_rule, tokens} ->
+        IO.inspect at_rule, label: "AT RULE"
+        IO.inspect tokens, label: "TOKENS"
+        {:ok, simple_block, rest} = build_simple_block(tokens)
+        {:halt, {:ok, %{at_rule | prelude: Enum.reverse(at_rule.prelude), block: simple_block}, rest}}
+
+      _token, {:ok, at_rule, [_ | rest_tokens] = tokens} ->
+        {:ok, value, rest} = build_component_value(tokens)
+        {:cont, {:ok, %{at_rule | prelude: [value | at_rule.prelude]}, rest_tokens, length(tokens) - length(rest)}}
     end)
-    |> Enum.to_list
   end
 
   @doc """
@@ -115,6 +118,122 @@ defmodule CssTokenizer.Stylesheet do
     value to the qualified rule’s prelude.
   """
   def build_qualified_rule(tokens) do
-    Enum.split_while(tokens, fn -> end )
   end
+
+  def build_simple_block([{:lcurly, _} | tokens]) do
+    Enum.reduce_while(tokens, {:ok, %SimpleBlock{}, tokens}, fn
+      nil, _ ->
+        {:halt, {:error, :premature_eof}}
+
+      _token, {:ok, simple_block, [_ | rest], 1} ->
+        {:cont, {:ok, simple_block, rest}}
+
+      _token, {:ok, simple_block, [_ | rest], i} when i > 0 ->
+        # we're inside a component value, skip it
+        {:cont, {:ok, simple_block, rest, i - 1}}
+
+      {:rcurly, _}, {:ok, simple_block, [_ | rest]} ->
+        {:halt, {:ok, %{simple_block | value: Enum.reverse(simple_block.value)}, rest}}
+
+      _token, {:ok, simple_block, [_ | rest_tokens] = tokens} ->
+        {:ok, component_value, rest} = build_component_value(tokens)
+        {:cont, {:ok, %{simple_block | value: [component_value | simple_block.value]}, rest_tokens, length(tokens) - length(rest)}}
+    end)
+  end
+
+  def build_simple_block([{:lbracket, _} | tokens]) do
+    Enum.reduce_while(tokens, {:ok, %SimpleBlock{}, tokens}, fn
+      nil, _ ->
+        {:halt, {:error, :premature_eof}}
+
+      _token, {:ok, simple_block, [_ | rest], 1} ->
+        {:cont, {:ok, simple_block, rest}}
+
+      _token, {:ok, simple_block, [_ | rest], i} when i > 0 ->
+        # we're inside a component value, skip it
+        {:cont, {:ok, simple_block, rest, i - 1}}
+
+      {:rbracket, _}, {:ok, simple_block, [_ | rest]} ->
+        {:halt, {:ok, %{simple_block | value: Enum.reverse(simple_block.value)}, rest}}
+
+      _token, {:ok, simple_block, [_ | rest_tokens] = tokens} ->
+        {:ok, component_value, rest} = build_component_value(tokens)
+        {:cont, {:ok, %{simple_block | value: [component_value | simple_block.value]}, rest_tokens, length(tokens) - length(rest)}}
+    end)
+  end
+
+  def build_simple_block([{:lparen, _} | tokens]) do
+    Enum.reduce_while(tokens, {:ok, %SimpleBlock{}, tokens}, fn
+      nil, _ ->
+        {:halt, {:error, :premature_eof}}
+
+      _token, {:ok, simple_block, [_ | rest], 1} ->
+        {:cont, {:ok, simple_block, rest}}
+
+      _token, {:ok, simple_block, [_ | rest], i} when i > 0 ->
+        # we're inside a component value, skip it
+        {:cont, {:ok, simple_block, rest, i - 1}}
+
+      {:rparen, _}, {:ok, simple_block, [_ | rest]} ->
+        {:halt, {:ok, %{simple_block | value: Enum.reverse(simple_block.value)}, rest}}
+
+      _token, {:ok, simple_block, [_ | rest_tokens] = tokens} ->
+        {:ok, component_value, rest} = build_component_value(tokens)
+        {:cont, {:ok, %{simple_block | value: [component_value | simple_block.value]}, rest_tokens, length(tokens) - length(rest)}}
+    end)
+  end
+
+  @doc """
+  # 5.4.8. Consume a function
+  Note: This algorithm assumes that the current input token has already been checked to be a
+  <function-token>.
+
+  To consume a function:
+
+  Create a function with a name equal to the value of the current input token, and with a value
+  which is initially an empty list. Repeatedly consume the next input token and process it as
+  follows:
+
+  - `<)-token>`: Return the function.
+  - `<EOF-token>`: This is a parse error. Return the function.
+  - anything else: Reconsume the current input token. Consume a component value and append the
+    returned value to the function’s value.
+  """
+  def build_function([{:lparen, name} | tokens]) do
+    Enum.reduce_while(tokens, {:ok, %Function{name: name}, tokens}, fn
+      nil, _ ->
+        {:halt, {:error, :premature_eof}}
+
+      _token, {:ok, function, [_ | rest], 1} ->
+        {:cont, {:ok, function, rest}}
+
+      _token, {:ok, function, [_ | rest], i} when i > 0 ->
+        # we're inside a component value, skip it
+        {:cont, {:ok, function, rest, i - 1}}
+
+      {:rparen, _}, {:ok, function, [_ | rest]} ->
+        {:halt, {:ok, %{function | value: Enum.reverse(function.value)}, rest}}
+
+      _token, {:ok, function, [_ | rest_tokens] = tokens} ->
+        {:ok, component_value, rest} = build_component_value(tokens)
+        {:cont, {:ok, %{function | value: [component_value | function.value]}, rest_tokens, length(tokens) - length(rest)}}
+    end)
+  end
+
+  @doc """
+  # 5.4.6. Consume a component value
+
+  To consume a component value:
+
+  - If the current input token is a <{-token>, <[-token>, or <(-token>, consume a simple block and
+    return it.
+  - Otherwise, if the current input token is a <function-token>, consume a function and return it.
+  - Otherwise, return the current input token.
+  """
+  def build_component_value([{:lcurly, _} | _] = tokens), do: build_simple_block(tokens)
+  def build_component_value([{:lbracket, _} | _] = tokens), do: build_simple_block(tokens)
+  def build_component_value([{:lparen, _} | _] = tokens), do: build_simple_block(tokens)
+  def build_component_value([{:function, _} | _] = tokens), do: build_function(tokens)
+  def build_component_value([token | rest]), do: {:ok, token, rest}
+  def build_component_value([]), do: {:ok, nil, []}
 end
