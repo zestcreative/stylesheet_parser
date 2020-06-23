@@ -5,6 +5,12 @@
 
 @import "https://www.w3.org/StyleSheets/TR/2016/base.css";
 
+@media only screen and (max-width: 600px) {
+  body {
+    background-color: lightblue;
+  }
+}
+
 /** Example Code **************************************************************/
 
 	div.html, div.xml,

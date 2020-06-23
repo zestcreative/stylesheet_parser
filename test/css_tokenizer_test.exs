@@ -2,6 +2,31 @@ defmodule CssTokenizerTest do
   use ExUnit.Case
   doctest CssTokenizer
 
+  describe "build_at_rule" do
+    test "returns atrule from @import" do
+      css = """
+      @import "https://www.w3.org/StyleSheets/TR/2016/base.css";
+      """
+
+      {:ok, tokens} = CssTokenizer.tokenize(css)
+      tokens
+      |> IO.inspect
+      |> CssTokenizer.Stylesheet.build_at_rule
+      |> IO.inspect
+    end
+
+    test "returns atrule from @media" do
+      css = """
+      @media only screen and (max-width: 600px) {
+        body {
+          background-color: lightblue;
+        }
+      }
+      """
+
+    end
+  end
+
   describe "tokenize" do
     test "tokenizes CSS" do
       css = """
