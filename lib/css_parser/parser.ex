@@ -1,4 +1,8 @@
 defmodule CssParser.Parser do
+  defmodule ParseError do
+    defexception [:message, :remaining_tokens]
+  end
+
   defmodule Stylesheet do
     defstruct [rules: []]
 
@@ -181,7 +185,7 @@ defmodule CssParser.Parser do
     do_parse_rule(tokens, top_level)
   end
 
-  defp do_parse_rule([], _top_level), do: {:error, :syntax}
+  defp do_parse_rule([], _top_level), do: {:error, %ParseError{message: "syntax error"}}
   defp do_parse_rule([{:whitespace, _} | rest], top_level) do
     do_parse_rule(rest, top_level)
   end
@@ -215,7 +219,7 @@ defmodule CssParser.Parser do
       {:ok, declaration}
     end
   end
-  def parse_declaration(_tokens), do: {:error, :invalid_declaration}
+  def parse_declaration(_tokens), do: {:error, %ParseError{message: "invalid declaration"}}
 
   @doc """
   # 5.3.6. Parse a list of declarations
@@ -273,7 +277,7 @@ defmodule CssParser.Parser do
     end
   end
 
-  defp do_parse_declarations(tokens, _declarations), do: {:error, :declarations_error, tokens}
+  defp do_parse_declarations(tokens, _declarations), do: %ParseError{message: "declarations error", remaining_tokens: tokens}
 
   @doc """
   # 5.3.7. Parse a component value
@@ -288,10 +292,10 @@ defmodule CssParser.Parser do
   """
 
   def parse_component_value([{:whitespace, _} | tokens]), do: parse_component_value(tokens)
-  def parse_component_value([]), do: {:error, :invalid_component_value}
+  def parse_component_value([]), do: {:error, %ParseError{message: "invalid component value"}}
   def parse_component_value(tokens), do: do_parse_component_value(tokens, nil)
 
-  defp do_parse_component_value([], nil), do: {:error, :invalid_component_value}
+  defp do_parse_component_value([], nil), do: {:error, %ParseError{message: "invalid component value"}}
   defp do_parse_component_value([{:whitespace, _} | rest], value) do
     do_parse_component_value(rest, value)
   end
@@ -342,7 +346,7 @@ defmodule CssParser.Parser do
       {:ok, at_rule, rest}
     end
   end
-  def do_build_at_rule([], at_rule), do: {:error, at_rule}
+  def do_build_at_rule([], at_rule), do: {:error, %ParseError{message: "invalid component value", remaining_tokens: [at_rule]}}
   def do_build_at_rule([{:semicolon, _} | rest], at_rule) do
     {:ok, %{at_rule | prelude: Enum.reverse(at_rule.prelude)}, rest}
   end
@@ -383,7 +387,7 @@ defmodule CssParser.Parser do
       }, rest}
     end
   end
-  def do_build_qualified_rule([], _qualified_rule), do: {:error, :invalid_qualified_rule}
+  def do_build_qualified_rule([], _qualified_rule), do: {:error, %ParseError{message: "invalid qualified rule"}}
 
   def do_build_qualified_rule([{:lcurly, _} | _] = tokens, qualified_rule) do
     with {:ok, simple_block, rest} <- build_simple_block(tokens) do
@@ -435,7 +439,7 @@ defmodule CssParser.Parser do
     do_build_simple_block(tokens, %SimpleBlock{terminator: :rparen})
   end
 
-  defp do_build_simple_block([], simple_block), do: {:error, simple_block}
+  defp do_build_simple_block([], simple_block), do: {:error, %ParseError{message: "invalid simple block", remaining_tokens: [simple_block]}}
   defp do_build_simple_block([{terminator, _} | rest], %{terminator: terminator} = simple_block) do
     {:ok, %{simple_block | value: Enum.reverse(simple_block.value)}, rest}
   end
@@ -466,7 +470,7 @@ defmodule CssParser.Parser do
     function = %Function{name: name}
     do_build_function(tokens, function)
   end
-  def do_build_function([], function), do: {:error, function}
+  def do_build_function([], function), do: {:error, %ParseError{message: "invalid function", remaining_tokens: [function]}}
   def do_build_function([{:rparen, _} | rest], function) do
     {:ok, %{function | value: Enum.reverse(function.value)}, rest}
   end
@@ -509,9 +513,9 @@ defmodule CssParser.Parser do
     declaration = %Declaration{name: name}
     do_build_declaration(tokens, declaration)
   end
-  def build_declaration(tokens), do: {:error, :invalid_declaration, tokens}
+  def build_declaration(tokens), do: {:error, %ParseError{message: "invalid declaration", remaining_tokens: [tokens]}}
 
-  defp do_build_declaration([], %{value: []}), do: {:error, :invalid_declaration}
+  defp do_build_declaration([], %{value: []}), do: {:error, %ParseError{message: "invalid declaration"}}
   defp do_build_declaration([], declaration), do: finish_declaration(declaration, [])
   defp do_build_declaration([{:whitespace, _} | rest], declaration) do
     do_build_declaration(rest, declaration)
