@@ -35,7 +35,7 @@ defmodule CssParser.Parser do
   end
 
   defmodule QualifiedRule do
-    defstruct [:block, :block_token, value: [], prelude: [], top_level: false]
+    defstruct [:block, value: [], prelude: [], top_level: false]
 
     defimpl String.Chars, for: __MODULE__ do
       defp token_to_string({:delim, "\\"}), do: "\\\n"
@@ -46,7 +46,7 @@ defmodule CssParser.Parser do
         "#{Enum.map(qualified_rule.prelude, &token_to_string/1)};"
       end
       def to_string(qualified_rule) do
-        "#{Enum.map(qualified_rule.prelude, &token_to_string/1)}#{token_to_string(qualified_rule.block_token)}#{token_to_string(qualified_rule.block)}\n"
+        "#{Enum.map(qualified_rule.prelude, &token_to_string/1)}#{token_to_string(qualified_rule.block)}\n"
       end
     end
   end
@@ -365,11 +365,9 @@ defmodule CssParser.Parser do
   def build_qualified_rule(tokens, opts \\ [])
   def build_qualified_rule(tokens, opts) do
     qualified_rule = %QualifiedRule{top_level: opts[:top_level] || false}
-    with {:ok, qualified_rule, rest} <- do_build_qualified_rule(tokens, qualified_rule) do
-      {:ok, %{qualified_rule |
-        value: Enum.reverse(qualified_rule.value),
-        prelude: Enum.reverse(qualified_rule.prelude)
-      }, rest}
+    with {:ok, qualified_rule, rest} <- do_build_qualified_rule(tokens, qualified_rule),
+         {:ok, declarations} <- qualified_rule.block.value |> parse_declarations() do
+      {:ok, %{qualified_rule | value: declarations, prelude: Enum.reverse(qualified_rule.prelude)}, rest}
     end
   end
   def do_build_qualified_rule([], _qualified_rule), do: {:error, %ParseError{message: "invalid qualified rule"}}

@@ -29,14 +29,13 @@ defmodule CssParser.ParserTest do
             whitespace: "\n"
           ]
         },
-        block_token: nil,
         prelude: [
           {:delim, "."},
           {:ident, "first"},
           {:whitespace, " "},
           {:ident, "span"},
           {:colon, ":"},
-          %CssParser.Parser.Function{name: "nth-child", value: [anb: "2n+1"]},
+          %Parser.Function{name: "nth-child", value: [anb: "2n+1"]},
           {:comma, ","},
           {:whitespace, "\n"},
           {:delim, "."},
@@ -44,7 +43,7 @@ defmodule CssParser.ParserTest do
           {:whitespace, " "},
           {:ident, "span"},
           {:colon, ":"},
-          %CssParser.Parser.Function{name: "nth-child", value: [anb: "2n+1"]},
+          %Parser.Function{name: "nth-child", value: [anb: "2n+1"]},
           {:comma, ","},
           {:whitespace, "\n"},
           {:delim, "."},
@@ -52,11 +51,13 @@ defmodule CssParser.ParserTest do
           {:whitespace, " "},
           {:ident, "span"},
           {:colon, ":"},
-          %CssParser.Parser.Function{name: "nth-of-type", value: [anb: "2n+1"]},
+          %Parser.Function{name: "nth-of-type", value: [anb: "2n+1"]},
           {:whitespace, " "}
         ],
-        top_level: false,
-        value: []
+        value: [
+          %Parser.Declaration{important: false, name: "background-color", value: [ident: "lime"]}
+        ],
+        top_level: false
       }
     end
 

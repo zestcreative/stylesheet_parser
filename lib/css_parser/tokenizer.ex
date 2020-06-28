@@ -244,9 +244,9 @@ defmodule CssParser.Tokenizer do
       concat(ndimension_token |> choice([string("-"), string("+")]), signless_integer_token),
       concat(repeat(string("+")) |> utf8_string([?n, ?N], 1) |> choice([string("-"), string("+")]), signless_integer_token),
       concat(string("-") |> utf8_string([?n, ?N], 1) |> choice([string("-"), string("+")]), signless_integer_token),
-      integer_token,
+      # integer_token, # this is catching too much
       ndimension_token,
-      repeat(string("+")) |> utf8_string([?n, ?N], 1),
+      times(string("+"), min: 1) |> utf8_string([?n, ?N], 1), # made it match at least 1 to catch less
       string("-") |> utf8_string([?n, ?N], 1),
       ndashdigit_dimension_token
     ])

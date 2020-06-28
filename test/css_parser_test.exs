@@ -83,7 +83,11 @@ defmodule CssParserTest do
             {:whitespace, " "}
           ],
           top_level: true,
-          value: []
+          value: [
+            %Parser.Declaration{important: false, name: "display", value: [ident: "table"]},
+            %Parser.Declaration{important: false, name: "margin", value: [dimension: ["1", "em"], ident: "auto"]},
+            %Parser.Declaration{important: false, name: "line-height", value: [ident: "normal"]}
+          ]
         },
         %CssParser.Parser.QualifiedRule{
           block: %CssParser.Parser.SimpleBlock{
@@ -127,7 +131,12 @@ defmodule CssParserTest do
             {:whitespace, " "}
           ],
           top_level: true,
-          value: []
+          value: [
+            %Parser.Declaration{important: false, name: "margin", value: [dimension: ["1", "em"]]},
+            %Parser.Declaration{important: false, name: "border", value: [ident: "solid", ident: "thin", ident: "silver"]},
+            %Parser.Declaration{important: false, name: "padding", value: [dimension: ["0.25", "em"]]},
+            %Parser.Declaration{important: false, name: "display", value: [ident: "table"]}
+          ]
         }
       ]
 
