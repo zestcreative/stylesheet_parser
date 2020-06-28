@@ -149,20 +149,22 @@ defmodule CssParser.Tokenizer do
     |> times(ascii_char([?0..?9]), min: 1)
 
   url_token =
-    string("(")
+    string("url(")
     |> concat(maybe_whitespace |> ignore)
     |> repeat(
       choice([
+        escape,
         utf8_string([
+          {:not, ?"},
           {:not, ?'},
           {:not, ?(},
           {:not, ?)},
           {:not, ?\\},
-          {:not, ?/},
-          {:not, 0..32},
+          {:not, 0..8},
+          {:not, 11},
+          {:not, 14..31},
           {:not, 127},
-        ], 1),
-        escape
+        ], 1)
       ])
     )
     |> concat(maybe_whitespace |> ignore)
@@ -170,6 +172,31 @@ defmodule CssParser.Tokenizer do
     |> reduce({List, :to_string, []})
 
   defparsec :url_token, url_token
+
+  bad_url_token =
+    string("url(")
+    |> concat(maybe_whitespace |> ignore)
+    |> repeat(
+      choice([
+        lookahead_not(escape),
+        utf8_string([
+          ?",
+          ?',
+          ?(,
+          ?),
+          ?\\,
+          0..8,
+          11,
+          14..31,
+          127,
+        ], 1)
+      ])
+    )
+    |> concat(maybe_whitespace |> ignore)
+    |> string(")")
+    |> reduce({List, :to_string, []})
+
+  defparsec :bad_url_token, bad_url_token
 
   number_token =
     choice([
@@ -235,6 +262,7 @@ defmodule CssParser.Tokenizer do
       hash_token |> unwrap_and_tag(:hash),
       function_token |> unwrap_and_tag(:function),
       url_token |> unwrap_and_tag(:url),
+      bad_url_token |> unwrap_and_tag(:bad_url),
       lparen_token |> unwrap_and_tag(:lparen),
       rparen_token |> unwrap_and_tag(:rparen),
       dimension_token |> tag(:dimension),
