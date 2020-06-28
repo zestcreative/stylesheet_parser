@@ -110,8 +110,7 @@ defmodule CssParser.Parser do
   To parse a stylesheet from a stream of tokens:
 
   1. Create a new stylesheet.
-  2. Consume a list of rules from the stream of tokens, with the top-level flag set. Let the return
-      value be rules.
+  2. Consume a list of rules from the stream of tokens, with the top-level flag set. Let the return value be rules.
   3. Assign rules to the stylesheet’s value.
   4. Return the stylesheet.
   """
@@ -173,10 +172,8 @@ defmodule CssParser.Parser do
 
   1. While the next input token is a `<whitespace-token>`, consume the next input token.
   2. If the next input token is an `<EOF-token>`, return a syntax error.
-     Otherwise, if the next input token is an `<at-keyword-token>`, consume an at-rule, and let rule
-     be the return value.
-     Otherwise, consume a qualified rule and let rule be the return value. If nothing was returned,
-     return a syntax error.
+     Otherwise, if the next input token is an `<at-keyword-token>`, consume an at-rule, and let rule be the return value.
+     Otherwise, consume a qualified rule and let rule be the return value. If nothing was returned, return a syntax error.
   3. While the next input token is a `<whitespace-token>`, consume the next input token.
   4. If the next input token is an `<EOF-token>`, return rule. Otherwise, return a syntax error.
   """
@@ -224,9 +221,7 @@ defmodule CssParser.Parser do
   @doc """
   # 5.3.6. Parse a list of declarations
 
-  **Note** Despite the name, this actually parses a mixed list of declarations and at-rules, as CSS
-  2.1 does for @page. Unexpected at-rules (which could be all of them, in a given context) are
-  invalid and should be ignored by the consumer.
+  **Note** Despite the name, this actually parses a mixed list of declarations and at-rules, as CSS 2.1 does for @page. Unexpected at-rules (which could be all of them, in a given context) are invalid and should be ignored by the consumer.
 
   To parse a list of declarations:
 
@@ -241,17 +236,12 @@ defmodule CssParser.Parser do
 
   Repeatedly consume the next input token:
 
-  - `<whitespace-token>` or `<semicolon-token>` Do nothing.
-  - `<EOF-token>` Return the list of declarations.
-  - `<at-keyword-token>` Reconsume the current input token. Consume an at-rule. Append the returned
-      rule to the list of declarations.
-  - `<ident-token>` Initialize a temporary list initially filled with the current input token. As
-    long as the next input token is anything other than a <semicolon-token> or <EOF-token>, consume
-    a component value and append it to the temporary list. Consume a declaration from the temporary
-    list. If anything was returned, append it to the list of declarations.
-  - anything else: This is a parse error. Reconsume the current input token. As long as the next
-    input token is anything other than a <semicolon-token> or <EOF-token>, consume a component value
-    and throw away the returned value.
+  - `<whitespace-token>` - Do nothing.
+  - `<semicolon-token>` - Do nothing.
+  - `<EOF-token>` - Return the list of declarations.
+  - `<at-keyword-token>` - Reconsume the current input token. Consume an at-rule. Append the returned rule to the list of declarations.
+  - `<ident-token>` - Initialize a temporary list initially filled with the current input token. As long as the next input token is anything other than a `<semicolon-token>` or `<EOF-token>`, consume a component value and append it to the temporary list. Consume a declaration from the temporary list. If anything was returned, append it to the list of declarations.
+  - anything else - This is a parse error. Reconsume the current input token. As long as the next input token is anything other than a `<semicolon-token>` or `<EOF-token>`, consume a component value and throw away the returned value.
   """
   def parse_declarations(tokens), do: do_parse_declarations(tokens, [])
 
@@ -290,7 +280,6 @@ defmodule CssParser.Parser do
   4. While the next input token is a `<whitespace-token>`, consume the next input token.
   5. If the next input token is an `<EOF-token>`, return value. Otherwise, return a syntax error.
   """
-
   def parse_component_value([{:whitespace, _} | tokens]), do: parse_component_value(tokens)
   def parse_component_value([]), do: {:error, %ParseError{message: "invalid component value"}}
   def parse_component_value(tokens), do: do_parse_component_value(tokens, nil)
@@ -309,8 +298,7 @@ defmodule CssParser.Parser do
 
   To parse a list of component values:
 
-  1. Repeatedly consume a component value until an `<EOF-token>` is returned, appending the returned
-    values (except the final `<EOF-token>`) into a list. Return the list.
+  1. Repeatedly consume a component value until an `<EOF-token>` is returned, appending the returned values (except the final `<EOF-token>`) into a list. Return the list.
   """
   def parse_component_values(tokens), do: do_parse_component_values(tokens, [])
 
@@ -334,11 +322,10 @@ defmodule CssParser.Parser do
 
   Repeatedly consume the next input token:
 
-  - `<semicolon-token>`: Return the at-rule.
-  - `<EOF-token>`: This is a parse error. Return the at-rule.
-  - `<{-token>`: Consume a simple block and assign it to the at-rule’s block. Return the at-rule.
-  - anything else: Reconsume the current input token. Consume a component value. Append the returned
-    value to the at-rule’s prelude.
+  - `<semicolon-token>` - Return the at-rule.
+  - `<EOF-token>` - This is a parse error. Return the at-rule.
+  - `<{-token>` - Consume a simple block and assign it to the at-rule’s block. Return the at-rule.
+  - anything else - Reconsume the current input token. Consume a component value. Append the returned value to the at-rule’s prelude.
   """
   def build_at_rule([{:at_keyword, name} | tokens], opts \\ []) do
     at_rule = %AtRule{name: name, top_level: opts[:top_level] || false}
@@ -371,11 +358,9 @@ defmodule CssParser.Parser do
 
   Repeatedly consume the next input token:
 
-  - `<EOF-token>`:  This is a parse error. Return nothing.
-  - `<{-token>`: Consume a simple block and assign it to the qualified rule’s block. Return the
-    qualified rule.
-  - anything else: Reconsume the current input token. Consume a component value. Append the returned
-    value to the qualified rule’s prelude.
+  - `<EOF-token>` - This is a parse error. Return nothing.
+  - `<{-token>` - Consume a simple block and assign it to the qualified rule’s block. Return the qualified rule.
+  - anything else - Reconsume the current input token. Consume a component value. Append the returned value to the qualified rule’s prelude.
   """
   def build_qualified_rule(tokens, opts \\ [])
   def build_qualified_rule(tokens, opts) do
@@ -409,25 +394,17 @@ defmodule CssParser.Parser do
 
   To consume a simple block:
 
-  The ending token is the mirror variant of the current input token. (E.g. if it was called with
-  `<[-token>`, the ending token is `<]-token>`.)
+  The ending token is the mirror variant of the current input token. (E.g. if it was called with `<[-token>`, the ending token is `<]-token>`.)
 
-  Create a simple block with its associated token set to the current input token and with a value
-  with is initially an empty list.
+  Create a simple block with its associated token set to the current input token and with a value with is initially an empty list.
 
   Repeatedly consume the next input token and process it as follows:
 
-  - ending token: Return the block.
-  - `<EOF-token>`: This is a parse error. Return the block.
-  - anything else: Reconsume the current input token. Consume a component value and append it to the
-    value of the block.
+  - ending token - Return the block.
+  - `<EOF-token>` - This is a parse error. Return the block.
+  - anything else: Reconsume the current input token. Consume a component value and append it to the value of the block.
 
-  **Note**: CSS has an unfortunate syntactic ambiguity between blocks that can contain declarations
-  and blocks that can contain qualified rules, so any "consume" algorithms that handle rules will
-  initially use this more generic algorithm rather than the more specific consume a list of
-  declarations or consume a list of rules algorithms. These more specific algorithms are instead
-  invoked when grammars are applied, depending on whether it contains a <declaration-list> or a
-  <rule-list>/<stylesheet>.
+  **Note**: CSS has an unfortunate syntactic ambiguity between blocks that can contain declarations and blocks that can contain qualified rules, so any "consume" algorithms that handle rules will initially use this more generic algorithm rather than the more specific consume a list of declarations or consume a list of rules algorithms. These more specific algorithms are instead invoked when grammars are applied, depending on whether it contains a `<declaration-list>` or a `<rule-list>`/`<stylesheet>`.
   """
   def build_simple_block([{:lcurly, _} | tokens]) do
     do_build_simple_block(tokens, %SimpleBlock{terminator: :rcurly})
@@ -451,19 +428,15 @@ defmodule CssParser.Parser do
 
   @doc """
   # 5.4.8. Consume a function
-  Note: This algorithm assumes that the current input token has already been checked to be a
-  <function-token>.
+  Note: This algorithm assumes that the current input token has already been checked to be a `<function-token>`.
 
   To consume a function:
 
-  Create a function with a name equal to the value of the current input token, and with a value
-  which is initially an empty list. Repeatedly consume the next input token and process it as
-  follows:
+  Create a function with a name equal to the value of the current input token, and with a value which is initially an empty list. Repeatedly consume the next input token and process it as follows:
 
-  - `<)-token>`: Return the function.
-  - `<EOF-token>`: This is a parse error. Return the function.
-  - anything else: Reconsume the current input token. Consume a component value and append the
-    returned value to the function’s value.
+  - `<)-token>` - Return the function.
+  - `<EOF-token>` - This is a parse error. Return the function.
+  - anything else - Reconsume the current input token. Consume a component value and append the returned value to the function’s value.
   """
   def build_function([{:function, name} | tokens]) do
     name = String.replace_suffix(name, "(", "")
@@ -483,25 +456,18 @@ defmodule CssParser.Parser do
   @doc """
   # 5.4.5. Consume a declaration
 
-  **Note**: This algorithm assumes that the next input token has already been checked to be an
-  <ident-token>.
+  **Note**: This algorithm assumes that the next input token has already been checked to be an `<ident-token>`.
 
   To consume a declaration:
 
-  Consume the next input token. Create a new declaration with its name set to the value of the
-  current input token and its value initially set to the empty list.
+  Consume the next input token. Create a new declaration with its name set to the value of the current input token and its value initially set to the empty list.
 
-  1. While the next input token is a <whitespace-token>, consume the next input token.
-  2. If the next input token is anything other than a <colon-token>, this is a parse error. Return
-      nothing. Otherwise, consume the next input token.
-  3. While the next input token is a <whitespace-token>, consume the next input token.
-  4. As long as the next input token is anything other than an <EOF-token>, consume a component
-      value and append it to the declaration’s value.
-  5. If the last two non-<whitespace-token>s in the declaration’s value are a <delim-token> with the
-      value "!" followed by an <ident-token> with a value that is an ASCII case-insensitive match
-      for "important", remove them from the declaration’s value and set the declaration’s important
-      flag to true.
-  6. While the last token in the declaration’s value is a <whitespace-token>, remove that token.
+  1. While the next input token is a `<whitespace-token>`, consume the next input token.
+  2. If the next input token is anything other than a `<colon-token>`, this is a parse error. Return nothing. Otherwise, consume the next input token.
+  3. While the next input token is a `<whitespace-token>`, consume the next input token.
+  4. As long as the next input token is anything other than an `<EOF-token>`, consume a component value and append it to the declaration’s value.
+  5. If the last two non-`<whitespace-token>`s in the declaration’s value are a `<delim-token>` with the value "!" followed by an `<ident-token>` with a value that is an ASCII case-insensitive match for "important", remove them from the declaration’s value and set the declaration’s important flag to true.
+  6. While the last token in the declaration’s value is a `<whitespace-token>`, remove that token.
   7. Return the declaration.
   """
 
@@ -548,9 +514,9 @@ defmodule CssParser.Parser do
 
   To consume a component value:
 
-  - If the current input token is a <{-token>, <[-token>, or <(-token>, consume a simple block and
+  - If the current input token is a `<{-token>`, `<[-token>`, or `<(-token>`, consume a simple block and
     return it.
-  - Otherwise, if the current input token is a <function-token>, consume a function and return it.
+  - Otherwise, if the current input token is a `<function-token>`, consume a function and return it.
   - Otherwise, return the current input token.
   """
   def build_component_value([{:lcurly, _} | _] = tokens), do: build_simple_block(tokens)
