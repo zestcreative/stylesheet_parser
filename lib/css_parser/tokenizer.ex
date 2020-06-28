@@ -1,17 +1,26 @@
-defmodule CssTokenizer.Tokenizer do
+defmodule CssParser.Tokenizer do
   @moduledoc """
   https://www.w3.org/TR/css-syntax-3
+
+  Not currently tokenized:
+    1. `An+B` microsyntax
+    2. `Unicode-Range` microsyntax
   """
 
   import NimbleParsec
 
-  newline = string("\n")
+  newline = choice([
+    string("\r\n") |> replace("\n"),
+    string("\f") |> replace("\n"),
+    string("\n")
+  ])
+
   tab = string("\t")
   space = string(" ")
 
   comment_token =
     string("/*")
-    |> repeat(lookahead_not(string("*/")) |> utf8_char([]))
+    |> repeat(lookahead_not(string("*/")) |> utf8_string([], 1))
     |> string("*/")
     |> reduce({List, :to_string, []})
 
@@ -72,6 +81,7 @@ defmodule CssTokenizer.Tokenizer do
   function_token =
     ident_token
     |> concat(string("("))
+    |> reduce({List, :to_string, []})
 
   defparsec :function_token, function_token
 
@@ -105,7 +115,7 @@ defmodule CssTokenizer.Tokenizer do
       string("\"")
       |> repeat(
         choice([
-          utf8_char([{:not, ?"}, {:not, ?\\}, {:not, ?\n}]),
+          utf8_string([{:not, ?"}, {:not, ?\\}, {:not, ?\n}], 1),
           escape,
           concat(string("\\"), newline)
         ])
@@ -115,7 +125,7 @@ defmodule CssTokenizer.Tokenizer do
       string("'")
       |> repeat(
         choice([
-          utf8_char([{:not, ?'}, {:not, ?\\}, {:not, ?\n}]),
+          utf8_string([{:not, ?'}, {:not, ?\\}, {:not, ?\n}], 1),
           escape,
           concat(string("\\"), newline)
         ])
@@ -143,7 +153,7 @@ defmodule CssTokenizer.Tokenizer do
     |> concat(maybe_whitespace |> ignore)
     |> repeat(
       choice([
-        utf8_char([
+        utf8_string([
           {:not, ?'},
           {:not, ?(},
           {:not, ?)},
@@ -151,7 +161,7 @@ defmodule CssTokenizer.Tokenizer do
           {:not, ?/},
           {:not, 0..32},
           {:not, 127},
-        ]),
+        ], 1),
         escape
       ])
     )
@@ -223,6 +233,8 @@ defmodule CssTokenizer.Tokenizer do
       whitespace_token |> unwrap_and_tag(:whitespace),
       string_token |> unwrap_and_tag(:string),
       hash_token |> unwrap_and_tag(:hash),
+      function_token |> unwrap_and_tag(:function),
+      url_token |> unwrap_and_tag(:url),
       lparen_token |> unwrap_and_tag(:lparen),
       rparen_token |> unwrap_and_tag(:rparen),
       dimension_token |> tag(:dimension),
@@ -231,8 +243,6 @@ defmodule CssTokenizer.Tokenizer do
       comma_token |> unwrap_and_tag(:comma),
       cdc_token |> unwrap_and_tag(:cdc),
       ident_token |> unwrap_and_tag(:ident),
-      function_token |> unwrap_and_tag(:function),
-      url_token |> unwrap_and_tag(:url),
       cdo_token |> unwrap_and_tag(:cdo),
       at_keyword_token |> unwrap_and_tag(:at_keyword),
       colon_token |> unwrap_and_tag(:colon),
@@ -241,7 +251,7 @@ defmodule CssTokenizer.Tokenizer do
       rbracket_token |> unwrap_and_tag(:rbracket),
       lcurly_token |> unwrap_and_tag(:lcurly),
       rcurly_token |> unwrap_and_tag(:rcurly),
-      utf8_char([]) |> unwrap_and_tag(:delim)
+      utf8_string([], 1) |> unwrap_and_tag(:delim)
     ])
     |> repeat()
 end
