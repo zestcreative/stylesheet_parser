@@ -2,9 +2,7 @@ defmodule CssParser.Tokenizer do
   @moduledoc """
   https://www.w3.org/TR/css-syntax-3
 
-  Not currently tokenized:
-    1. `An+B` microsyntax
-    2. `<urange>` microsyntax
+  Not currently tokenized: `An+B` microsyntax with idents
   """
 
   import NimbleParsec
@@ -198,6 +196,20 @@ defmodule CssParser.Tokenizer do
 
   defparsec :bad_url_token, bad_url_token
 
+  integer_token =
+    choice([
+      string("+"),
+      string("-")
+    ])
+    |> optional()
+    |> times(ascii_char([?0..?9]), min: 1)
+
+  signed_integer_token =
+    choice([string("-"), string("+")])
+    |> times(ascii_char([?0..?9]), min: 1)
+
+  signless_integer_token = times(ascii_char([?0..?9]), min: 1)
+
   number_token =
     choice([
       string("+"),
@@ -212,10 +224,35 @@ defmodule CssParser.Tokenizer do
     |> optional(scientific_notation)
     |> reduce({List, :to_string, []})
 
-  defparsec :number_token, number_token
-
   dimension_token = concat(number_token, ident_token)
   defparsec :dimension_token, dimension_token
+
+  ndimension_token = integer_token |> utf8_string([?n, ?N], 1)
+  ndashdimension_token = ndimension_token |> string("-")
+  ndashdigit_dimension_token = ndashdimension_token |> utf8_string([?0..?9], min: 1)
+
+  a_n_b_token =
+    choice([
+      utf8_string([?o, ?O], 1) |> utf8_string([?d, ?D], 1) |> utf8_string([?d, ?D], 1),
+      utf8_string([?e, ?E], 1) |> utf8_string([?v, ?V], 1) |> utf8_string([?e, ?E], 1) |> utf8_string([?n, ?N], 1),
+      concat(ndimension_token, signed_integer_token),
+      concat(repeat(string("+")) |> utf8_string([?n, ?N], 1), signed_integer_token),
+      concat(string("-") |> utf8_string([?n, ?N], 1), signed_integer_token),
+      concat(ndashdimension_token, signless_integer_token),
+      concat(repeat(string("+")) |> utf8_string([?n, ?N], 1) |> string("-"), signless_integer_token),
+      concat(string("-") |> utf8_string([?n, ?N], 1) |> string("-"), signless_integer_token),
+      concat(ndimension_token |> choice([string("-"), string("+")]), signless_integer_token),
+      concat(repeat(string("+")) |> utf8_string([?n, ?N], 1) |> choice([string("-"), string("+")]), signless_integer_token),
+      concat(string("-") |> utf8_string([?n, ?N], 1) |> choice([string("-"), string("+")]), signless_integer_token),
+      integer_token,
+      ndimension_token,
+      repeat(string("+")) |> utf8_string([?n, ?N], 1),
+      string("-") |> utf8_string([?n, ?N], 1),
+      ndashdigit_dimension_token
+    ])
+    |> reduce({List, :to_string, []})
+
+  defparsec :number_token, number_token
 
   percentage_token = concat(number_token, string("%") |> ignore())
   defparsec :percentage_token, percentage_token
@@ -275,6 +312,7 @@ defmodule CssParser.Tokenizer do
       url_token |> unwrap_and_tag(:url),
       bad_url_token |> unwrap_and_tag(:bad_url),
       function_token |> unwrap_and_tag(:function),
+      a_n_b_token |> unwrap_and_tag(:anb),
       cdc_token |> unwrap_and_tag(:cdc),
       cdo_token |> unwrap_and_tag(:cdo),
       dimension_token |> tag(:dimension),

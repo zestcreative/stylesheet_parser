@@ -4,6 +4,62 @@ defmodule CssParser.ParserTest do
   doctest Parser
 
   describe "build_at_rule" do
+    test "returns a+bn tokens" do
+      css = """
+      .first span:nth-child(2n+1),
+      .second span:nth-child(2n+1),
+      .third span:nth-of-type(2n+1) {
+        background-color: lime;
+      }
+      """
+
+      {:ok, tokens} = CssParser.tokenize(css)
+      {:ok, [rule]} = Parser.parse_rules(tokens)
+
+      assert rule == %Parser.QualifiedRule{
+        block: %Parser.SimpleBlock{
+          terminator: :rcurly,
+          value: [
+            whitespace: "\n  ",
+            ident: "background-color",
+            colon: ":",
+            whitespace: " ",
+            ident: "lime",
+            semicolon: ";",
+            whitespace: "\n"
+          ]
+        },
+        block_token: nil,
+        prelude: [
+          {:delim, "."},
+          {:ident, "first"},
+          {:whitespace, " "},
+          {:ident, "span"},
+          {:colon, ":"},
+          %CssParser.Parser.Function{name: "nth-child", value: [anb: "2n+1"]},
+          {:comma, ","},
+          {:whitespace, "\n"},
+          {:delim, "."},
+          {:ident, "second"},
+          {:whitespace, " "},
+          {:ident, "span"},
+          {:colon, ":"},
+          %CssParser.Parser.Function{name: "nth-child", value: [anb: "2n+1"]},
+          {:comma, ","},
+          {:whitespace, "\n"},
+          {:delim, "."},
+          {:ident, "third"},
+          {:whitespace, " "},
+          {:ident, "span"},
+          {:colon, ":"},
+          %CssParser.Parser.Function{name: "nth-of-type", value: [anb: "2n+1"]},
+          {:whitespace, " "}
+        ],
+        top_level: false,
+        value: []
+      }
+    end
+
     test "returns uranges" do
       css = """
       @font-face {
@@ -13,7 +69,7 @@ defmodule CssParser.ParserTest do
       }
       """
 
-      {:ok, tokens} = CssParser.tokenize(css) |> IO.inspect
+      {:ok, tokens} = CssParser.tokenize(css)
       {:ok, at_rule, _rest} = Parser.build_at_rule(tokens)
 
       assert at_rule.block == %Parser.SimpleBlock{
