@@ -4,7 +4,7 @@ defmodule CssParser.Tokenizer do
 
   Not currently tokenized:
     1. `An+B` microsyntax
-    2. `Unicode-Range` microsyntax
+    2. `<urange>` microsyntax
   """
 
   import NimbleParsec
@@ -26,7 +26,7 @@ defmodule CssParser.Tokenizer do
 
   defparsec :comment_token, comment_token
 
-  hex_digit = ascii_char([?a..?f, ?A..?F, ?0..?9])
+  hex_digit = utf8_string([?a..?f, ?A..?F, ?0..?9], 1)
 
   whitespace = choice([space, tab, newline])
 
@@ -200,10 +200,10 @@ defmodule CssParser.Tokenizer do
 
   number_token =
     choice([
-      empty(),
       string("+"),
       string("-")
     ])
+    |> optional()
     |> choice([
       times(ascii_char([?0..?9]), min: 1) |> string(".") |> times(ascii_char([?0..?9]), min: 1),
       times(ascii_char([?0..?9]), min: 1),
@@ -242,6 +242,18 @@ defmodule CssParser.Tokenizer do
     ])
   defparsec :ident_like_token, ident_like_token
 
+  urange_token =
+    choice([
+      string("U"),
+      string("u")
+    ])
+    |> string("+")
+    |> times(choice([hex_digit, string("?")]), min: 1, max: 6)
+    |> string("-")
+    |> times(hex_digit, min: 1, max: 6)
+    |> reduce({List, :to_string, []})
+  defparsec :urange, urange_token
+
   lparen_token = string("(")
   rparen_token = string(")")
   lbracket_token = string("[")
@@ -258,20 +270,20 @@ defmodule CssParser.Tokenizer do
     |> optional()
     |> choice([
       whitespace_token |> unwrap_and_tag(:whitespace),
-      string_token |> unwrap_and_tag(:string),
+      urange_token |> unwrap_and_tag(:urange),
       hash_token |> unwrap_and_tag(:hash),
-      function_token |> unwrap_and_tag(:function),
       url_token |> unwrap_and_tag(:url),
       bad_url_token |> unwrap_and_tag(:bad_url),
-      lparen_token |> unwrap_and_tag(:lparen),
-      rparen_token |> unwrap_and_tag(:rparen),
+      function_token |> unwrap_and_tag(:function),
+      cdc_token |> unwrap_and_tag(:cdc),
+      cdo_token |> unwrap_and_tag(:cdo),
       dimension_token |> tag(:dimension),
       percentage_token |> unwrap_and_tag(:percentage),
       number_token |> unwrap_and_tag(:number),
+      lparen_token |> unwrap_and_tag(:lparen),
+      rparen_token |> unwrap_and_tag(:rparen),
       comma_token |> unwrap_and_tag(:comma),
-      cdc_token |> unwrap_and_tag(:cdc),
       ident_token |> unwrap_and_tag(:ident),
-      cdo_token |> unwrap_and_tag(:cdo),
       at_keyword_token |> unwrap_and_tag(:at_keyword),
       colon_token |> unwrap_and_tag(:colon),
       semicolon_token |> unwrap_and_tag(:semicolon),
@@ -279,6 +291,7 @@ defmodule CssParser.Tokenizer do
       rbracket_token |> unwrap_and_tag(:rbracket),
       lcurly_token |> unwrap_and_tag(:lcurly),
       rcurly_token |> unwrap_and_tag(:rcurly),
+      string_token |> unwrap_and_tag(:string),
       utf8_string([], 1) |> unwrap_and_tag(:delim)
     ])
     |> repeat()
