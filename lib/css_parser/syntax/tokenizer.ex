@@ -1,4 +1,4 @@
-defmodule CssParser.Tokenizer do
+defmodule CssParser.Syntax.Tokenizer do
   @moduledoc """
   https://www.w3.org/TR/css-syntax-3
 

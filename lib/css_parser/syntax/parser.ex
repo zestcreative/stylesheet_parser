@@ -1,4 +1,4 @@
-defmodule CssParser.Parser do
+defmodule CssParser.Syntax.Parser do
   defmodule ParseError do
     defexception [:message, :remaining_tokens]
   end
@@ -77,7 +77,7 @@ defmodule CssParser.Parser do
       defp token_to_string(value), do: Kernel.to_string(value)
 
       def to_string(function) do
-        "#{function.name}(#{Enum.map(function.value, &token_to_string/1)})"
+        "#{function.name}#{Enum.map(function.value, &token_to_string/1)})"
       end
     end
   end
@@ -437,7 +437,6 @@ defmodule CssParser.Parser do
   - anything else - Reconsume the current input token. Consume a component value and append the returned value to the function’s value.
   """
   def build_function([{:function, name} | tokens]) do
-    name = String.replace_suffix(name, "(", "")
     function = %Function{name: name}
     do_build_function(tokens, function)
   end

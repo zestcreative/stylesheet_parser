@@ -3,7 +3,7 @@ defmodule CssParser do
   Documentation for `CssParser`.
   """
 
-  alias __MODULE__.{Tokenizer, Parser}
+  alias __MODULE__.Syntax.{Tokenizer, Parser}
 
   @doc """
   Intended to be the normal parser entry point, for parsing stylesheets.
