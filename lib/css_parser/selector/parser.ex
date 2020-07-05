@@ -3,7 +3,7 @@ defmodule CssParser.Selector.Parser do
   https://www.w3.org/TR/selectors-4/
   """
 
-  alias CssParser.{Function, SimpleSelector, CompoundSelector, ComplexSelector}
+  alias CssParser.{Selector, Function, Selector.Combinator, SimpleSelector, CompoundSelector, ComplexSelector}
 
   @doc """
   <selector-list> = <complex-selector-list>
@@ -88,44 +88,44 @@ defmodule CssParser.Selector.Parser do
 
   def combinator([{:delim, "|"}, {:delim, "|"} | rest]) do
     rest = ignore_whitespace(rest)
-    {{:column_combinator, "||"}, rest}
+    {{:combinator, :column}, rest}
   end
   def combinator([{:whitespace, _}, {:delim, "|"}, {:delim, "|"} | rest]) do
     rest = ignore_whitespace(rest)
-    {{:column_combinator, "||"}, rest}
+    {{:combinator, :column}, rest}
   end
 
   def combinator([{:delim, ">"} | rest]) do
     rest = ignore_whitespace(rest)
-    {{:child_combinator, ">"}, rest}
+    {{:combinator, :child}, rest}
   end
 
   def combinator([{:whitespace, _}, {:delim, ">"} | rest]) do
     rest = ignore_whitespace(rest)
-    {{:child_combinator, ">"}, rest}
+    {{:combinator, :child}, rest}
   end
 
   def combinator([{:delim, "+"} | rest]) do
     rest = ignore_whitespace(rest)
-    {{:sibling_combinator, "+"}, rest}
+    {{:combinator, :sibling}, rest}
   end
 
   def combinator([{:whitespace, _}, {:delim, "+"} | rest]) do
     rest = ignore_whitespace(rest)
-    {{:sibling_combinator, "+"}, rest}
+    {{:combinator, :sibling}, rest}
   end
 
   def combinator([{:delim, "~"} | rest]) do
     rest = ignore_whitespace(rest)
-    {{:subsequent_combinator, "~"}, rest}
+    {{:combinator, :subsequent}, rest}
   end
   def combinator([{:whitespace, _}, {:delim, "~"} | rest]) do
     rest = ignore_whitespace(rest)
-    {{:subsequent_combinator, "~"}, rest}
+    {{:combinator, :subsequent}, rest}
   end
 
   def combinator([{:whitespace, _} | rest]),
-    do: {{:descendant_combinator, " "}, rest}
+    do: {{:combinator, :descendant}, rest}
 
   def combinator(tokens), do: {nil, tokens}
 
@@ -258,13 +258,13 @@ defmodule CssParser.Selector.Parser do
   """
   def simple_selector(tokens) do
     case type_selector(tokens) do
-      {{_, type_selector}, rest} ->
-        {%SimpleSelector{value: type_selector}, rest}
+      {{_, type}, rest} ->
+        {%Selector{kind: :simple, type: type}, rest}
 
       {nil, _rest} ->
         case subclass_selector(tokens) do
-          {{_, subclass_selector}, rest} ->
-            {%SimpleSelector{value: subclass_selector}, rest}
+          {{_, subclass}, rest} ->
+            {%Selector{kind: :simple, classes: [subclass]}, rest}
           {nil, _rest} ->
             {nil, tokens}
         end
@@ -283,10 +283,24 @@ defmodule CssParser.Selector.Parser do
         {nil, tokens}
       [%{} = compound_token] ->
         {compound_token, rest}
-      [{type, value}] ->
-        {%SimpleSelector{type: type, value: value}, rest}
       compound_tokens ->
-        {%CompoundSelector{value: compound_tokens}, rest}
+        IO.inspect compound_tokens, label: "COMPOUND TOKENS"
+        {%Selector{
+          kind: :compound,
+          type: Enum.find_value(compound_tokens, fn
+            {:type, type} -> type
+            {:universal, universal} -> universal
+            _ -> false
+          end),
+          classes: Enum.reduce(compound_tokens, [], fn
+            {:class, class}, acc -> [class | acc]
+            _, acc -> acc
+          end),
+          pseudo_classes: Enum.reduce(compound_tokens, [], fn
+            {:pseudo_class, pseudo_class}, acc -> [pseudo_class | acc]
+            _, acc -> acc
+          end)
+        } |> IO.inspect(label: "SELECTOR"), rest}
     end
   end
 
@@ -332,7 +346,10 @@ defmodule CssParser.Selector.Parser do
         {nil, tokens}
 
       {compound_selector, rest} ->
-        {postlude, rest} = consume_complex_postlude(rest)
+        {postlude, _rest} = consume_complex_postlude(rest)
+        IO.inspect postlude, label: "POSTLUDE"
+        IO.inspect compound_selector, label: "COMPOUND"
+
         if postlude == [] do
           {compound_selector, rest}
         else
@@ -343,17 +360,24 @@ defmodule CssParser.Selector.Parser do
   end
 
   def complex_postlude(tokens) do
-    {combinator_token, rest} = combinator(tokens)
+    case combinator(tokens) do
+      {{:combinator, combinator}, rest} ->
+        case compound_selector(rest) do
+          {nil, _rest} ->
+            {nil, tokens}
 
-    case compound_selector(rest) do
-      {nil, _rest} ->
-        {nil, tokens}
+          {compound_selector, rest} ->
+            {%Combinator{kind: combinator, selector: compound_selector}, rest}
+        end
 
-      {compound_selector, rest} ->
-        result = if combinator_token,
-          do: [combinator_token, compound_selector],
-          else: [compound_selector]
-        {result, rest}
+      {nil, rest} ->
+        case compound_selector(rest) do
+          {nil, _rest} ->
+            {nil, tokens}
+
+          {compound_selector, rest} ->
+            {compound_selector, rest}
+        end
     end
   end
 

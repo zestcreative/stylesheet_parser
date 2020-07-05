@@ -2,6 +2,7 @@ defmodule CssParser.Selector.ParserTest do
   use ExUnit.Case
 
   alias CssParser.Selector.Parser
+  alias CssParser.{Selector, Selector.Combinator, SimpleSelector, CompoundSelector, ComplexSelector}
 
   describe "multiple selectors" do
     test "returns a list for each selector" do
@@ -15,7 +16,44 @@ defmodule CssParser.Selector.ParserTest do
 
       {selectors, _} = Parser.selector_list(tokens)
 
-      assert selectors == [universal_selector: "*"]
+      assert selectors == [
+        %Selector{
+          type: nil,
+          classes: [".first"],
+          combinator: %Combinator{
+            kind: :descendant,
+            selector: %Selector{
+              type: "span",
+              classes: [],
+              pseudo_classes: [":nth-child(2n+1"]
+            }
+          }
+        },
+        %Selector{
+          type: nil,
+          classes: [".second"],
+          combinator: %Combinator{
+            kind: :descendant,
+            selector: %Selector{
+              type: "span",
+              classes: [],
+              pseudo_classes: [":nth-child(2n+1"]
+            }
+          }
+        },
+        %Selector{
+          type: nil,
+          classes: [".third"],
+          combinator: %Combinator{
+            kind: :descendant,
+            selector: %Selector{
+              type: "span",
+              classes: [],
+              pseudo_classes: [":nth-of-type(2n+1"]
+            }
+          }
+        }
+      ]
     end
   end
 
@@ -56,13 +94,6 @@ defmodule CssParser.Selector.ParserTest do
       ]
     end
 
-    test "type selectors" do
-      tokens = "E" |> tokenize()
-      {selectors, _} = Parser.selector_list(tokens)
-
-      assert selectors == [type_selector: "E"]
-    end
-
     test "ID selectors" do
       tokens = "E#myid " |> tokenize()
       {selectors, _} = Parser.selector_list(tokens)
@@ -73,16 +104,29 @@ defmodule CssParser.Selector.ParserTest do
       ]
     end
 
-    test "compound selectors" do
+    test "complex selectors" do
       tokens = ".space-x-6>*+*" |> tokenize()
       {selectors, _} = Parser.selector_list(tokens)
 
       assert selectors == [
-        class_selector: ".space-x-6",
-        child_combinator: ">",
-        compound_selector: [universal_selector: "*"],
-        sibling_combinator: "+",
-        compound_selector: [universal_selector: "*"]
+        %Selector{
+          kind: :complex,
+          classes: [".space-x-6"],
+          combinator: %Combinator{
+            kind: :child,
+            selector: %Selector{
+              kind: :complex,
+              type: "*",
+              combinator: %Combinator{
+                kind: :child,
+                selector: %Selector{
+                  kind: :simple,
+                  type: "*"
+                }
+              }
+            }
+          }
+        }
       ]
     end
   end

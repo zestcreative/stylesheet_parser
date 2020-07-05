@@ -63,6 +63,24 @@ defmodule CssParser.Declaration do
   end
 end
 
+defmodule CssParser.Selector do
+  defstruct [
+    :combinator,
+    :kind,
+    :namespace,
+    :type,
+    classes: [],
+    attributes: [],
+    pseudo_classes: []
+  ]
+
+  defimpl String.Chars, for: __MODULE__ do
+    def to_string(selectors) do
+      selectors |> Enum.map(& Kernel.to_string(elem(&1, 1))) |> IO.inspect |> Enum.join()
+    end
+  end
+end
+
 defmodule CssParser.SimpleSelector do
   defstruct [:type, :value]
 
@@ -70,6 +88,18 @@ defmodule CssParser.SimpleSelector do
     def to_string(selectors) do
       selectors |> Enum.map(& Kernel.to_string(elem(&1, 1))) |> IO.inspect |> Enum.join()
     end
+  end
+end
+
+defmodule CssParser.Selector.Combinator do
+  defstruct [:kind, :selector]
+
+  defimpl String.Chars, for: __MODULE__ do
+    def to_string(%{type: :child}), do: ">"
+    def to_string(%{type: :sibling}), do: "+"
+    def to_string(%{type: :subsequent}), do: "~"
+    def to_string(%{type: :column}), do: "||"
+    def to_string(%{type: :descendant}), do: " "
   end
 end
 

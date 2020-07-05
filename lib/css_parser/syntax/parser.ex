@@ -230,7 +230,7 @@ defmodule CssParser.Syntax.Parser do
   - anything else - Reconsume the current input token. Consume a component value. Append the returned value to the at-rule’s prelude.
   """
   def build_at_rule([{:at_keyword, name} | tokens], opts \\ []) do
-    at_rule = %AtRule{name: name, top_level: opts[:top_level] || false}
+    at_rule = %AtRule{name: name, top_level: Keyword.get(opts, :top_level, false)}
     with {:ok, at_rule, rest} <- do_build_at_rule(tokens, at_rule) do
       {:ok, at_rule, rest}
     end
@@ -266,7 +266,7 @@ defmodule CssParser.Syntax.Parser do
   """
   def build_qualified_rule(tokens, opts \\ [])
   def build_qualified_rule(tokens, opts) do
-    qualified_rule = %QualifiedRule{top_level: opts[:top_level] || false}
+    qualified_rule = %QualifiedRule{top_level: Keyword.get(opts, :top_level, false)}
     with {:ok, qualified_rule, rest} <- do_build_qualified_rule(tokens, qualified_rule),
          {:ok, declarations} <- qualified_rule.block.value |> parse_declarations() do
       {selectors, _} = qualified_rule.prelude |> Enum.reverse() |> Selector.selector_list()
