@@ -1,107 +1,9 @@
 defmodule CssParser.Syntax.Parser do
+  alias CssParser.Selector.Parser, as: Selector
+  alias CssParser.{AtRule, Declaration, QualifiedRule, Function, SimpleBlock, Stylesheet}
+
   defmodule ParseError do
     defexception [:message, :remaining_tokens]
-  end
-
-  defmodule Stylesheet do
-    defstruct [rules: []]
-
-    defimpl String.Chars, for: __MODULE__ do
-      defp token_to_string({:delim, "\\"}), do: "\\\n"
-      defp token_to_string({_token, value}), do: Kernel.to_string(value)
-      defp token_to_string(value), do: Kernel.to_string(value)
-
-      def to_string(%{rules: rules}) do
-        "#{Enum.map(rules, &token_to_string/1)}"
-      end
-    end
-  end
-
-  defmodule AtRule do
-    defstruct [:name, :block, value: [], prelude: [], top_level: false]
-
-    defimpl String.Chars, for: __MODULE__ do
-      defp token_to_string({:delim, "\\"}), do: "\\\n"
-      defp token_to_string({_token, value}), do: Kernel.to_string(value)
-      defp token_to_string(value), do: Kernel.to_string(value)
-
-      def to_string(%{block: nil} = at_rule) do
-        "#{at_rule.name}#{Enum.map(at_rule.prelude, &token_to_string/1)};"
-      end
-      def to_string(at_rule) do
-        "#{at_rule.name}#{Enum.map(at_rule.prelude, &token_to_string/1)}#{token_to_string(at_rule.block)}\n"
-      end
-    end
-  end
-
-  defmodule QualifiedRule do
-    defstruct [:block, value: [], prelude: [], top_level: false]
-
-    defimpl String.Chars, for: __MODULE__ do
-      defp token_to_string({:delim, "\\"}), do: "\\\n"
-      defp token_to_string({_token, value}), do: Kernel.to_string(value)
-      defp token_to_string(value), do: Kernel.to_string(value)
-
-      def to_string(%{block: nil} = qualified_rule) do
-        "#{Enum.map(qualified_rule.prelude, &token_to_string/1)};"
-      end
-      def to_string(qualified_rule) do
-        "#{Enum.map(qualified_rule.prelude, &token_to_string/1)}#{token_to_string(qualified_rule.block)}\n"
-      end
-    end
-  end
-
-  defmodule Declaration do
-    defstruct [:name, value: [], important: false]
-
-    defimpl String.Chars, for: __MODULE__ do
-      defp token_to_string({:delim, "\\"}), do: "\\\n"
-      defp token_to_string({_token, value}), do: Kernel.to_string(value)
-      defp token_to_string(value), do: Kernel.to_string(value)
-
-      def to_string(%{important: true} = declaration) do
-        "#{declaration.name}: #{Enum.map(declaration.value, &token_to_string/1)} !important;"
-      end
-      def to_string(declaration) do
-        "#{declaration.name}: #{Enum.map(declaration.value, &token_to_string/1)};"
-      end
-    end
-  end
-
-  defmodule Function do
-    defstruct [:name, value: []]
-
-    defimpl String.Chars, for: __MODULE__ do
-      defp token_to_string({:delim, "\\"}), do: "\\\n"
-      defp token_to_string({_token, value}), do: Kernel.to_string(value)
-      defp token_to_string(value), do: Kernel.to_string(value)
-
-      def to_string(function) do
-        "#{function.name}#{Enum.map(function.value, &token_to_string/1)})"
-      end
-    end
-  end
-
-  defmodule SimpleBlock do
-    defstruct [:terminator, value: []]
-
-    defimpl String.Chars, for: __MODULE__ do
-      defp token_to_string({:delim, "\\"}), do: "\\\n"
-      defp token_to_string({_token, value}), do: Kernel.to_string(value)
-      defp token_to_string(value), do: Kernel.to_string(value)
-
-      defp terminator_open(%{terminator: :rcurly}), do: "{"
-      defp terminator_open(%{terminator: :rparen}), do: "( "
-      defp terminator_open(%{terminator: :rbracket}), do: "["
-
-      defp terminator_close(%{terminator: :rcurly}), do: "}"
-      defp terminator_close(%{terminator: :rparen}), do: " )"
-      defp terminator_close(%{terminator: :rbracket}), do: "]"
-
-      def to_string(at_rule) do
-        "#{terminator_open(at_rule)}#{Enum.map(at_rule.value, &token_to_string/1)}#{terminator_close(at_rule)}"
-      end
-    end
   end
 
   @doc """
@@ -367,7 +269,8 @@ defmodule CssParser.Syntax.Parser do
     qualified_rule = %QualifiedRule{top_level: opts[:top_level] || false}
     with {:ok, qualified_rule, rest} <- do_build_qualified_rule(tokens, qualified_rule),
          {:ok, declarations} <- qualified_rule.block.value |> parse_declarations() do
-      {:ok, %{qualified_rule | value: declarations, prelude: Enum.reverse(qualified_rule.prelude)}, rest}
+      {selectors, _} = qualified_rule.prelude |> Enum.reverse() |> Selector.selector_list()
+      {:ok, %{qualified_rule | block: true, value: declarations, prelude: selectors}, rest}
     end
   end
   def do_build_qualified_rule([], _qualified_rule), do: {:error, %ParseError{message: "invalid qualified rule"}}

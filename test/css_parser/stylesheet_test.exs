@@ -1,6 +1,7 @@
 defmodule CssParser.ParserTest do
   use ExUnit.Case
-  alias CssParser.Parser
+  alias CssParser.Syntax.Parser
+  alias CssParser.{Declaration, QualifiedRule, Function, SimpleBlock}
   doctest Parser
 
   describe "build_at_rule" do
@@ -16,8 +17,8 @@ defmodule CssParser.ParserTest do
       {:ok, tokens} = CssParser.tokenize(css)
       {:ok, [rule]} = Parser.parse_rules(tokens)
 
-      assert rule == %Parser.QualifiedRule{
-        block: %Parser.SimpleBlock{
+      assert rule == %QualifiedRule{
+        block: %SimpleBlock{
           terminator: :rcurly,
           value: [
             whitespace: "\n  ",
@@ -30,32 +31,18 @@ defmodule CssParser.ParserTest do
           ]
         },
         prelude: [
-          {:delim, "."},
-          {:ident, "first"},
-          {:whitespace, " "},
-          {:ident, "span"},
-          {:colon, ":"},
-          %Parser.Function{name: "nth-child", value: [anb: "2n+1"]},
-          {:comma, ","},
-          {:whitespace, "\n"},
-          {:delim, "."},
-          {:ident, "second"},
-          {:whitespace, " "},
-          {:ident, "span"},
-          {:colon, ":"},
-          %Parser.Function{name: "nth-child", value: [anb: "2n+1"]},
-          {:comma, ","},
-          {:whitespace, "\n"},
-          {:delim, "."},
-          {:ident, "third"},
-          {:whitespace, " "},
-          {:ident, "span"},
-          {:colon, ":"},
-          %Parser.Function{name: "nth-of-type", value: [anb: "2n+1"]},
-          {:whitespace, " "}
+          class_selector: ".first",
+          descendant_combinator: " ",
+          compound_selector: [type_selector: "span", pseudo_class_selector: ":nth-child(2n+1)"],
+          class_selector: ".second",
+          descendant_combinator: " ",
+          compound_selector: [type_selector: "span", pseudo_class_selector: ":nth-child(2n+1)"],
+          class_selector: ".third",
+          descendant_combinator: " ",
+          compound_selector: [type_selector: "span", pseudo_class_selector: ":nth-of-type(2n+1)"]
         ],
         value: [
-          %Parser.Declaration{important: false, name: "background-color", value: [ident: "lime"]}
+          %Declaration{important: false, name: "background-color", value: [ident: "lime"]}
         ],
         top_level: false
       }
@@ -73,7 +60,7 @@ defmodule CssParser.ParserTest do
       {:ok, tokens} = CssParser.tokenize(css)
       {:ok, at_rule, _rest} = Parser.build_at_rule(tokens)
 
-      assert at_rule.block == %Parser.SimpleBlock{
+      assert at_rule.block == %SimpleBlock{
         terminator: :rcurly,
         value: [
           {:whitespace, "\n  "},
@@ -88,7 +75,7 @@ defmodule CssParser.ParserTest do
           {:whitespace, " "},
           {:url, "url(fonts/BBCBengali.woff)"},
           {:whitespace, " "},
-          %Parser.Function{name: "format", value: [string: "\"woff\""]},
+          %Function{name: "format(", value: [string: "\"woff\""]},
           {:semicolon, ";"},
           {:whitespace, "\n  "},
           {:ident, "unicode-range"},
@@ -140,13 +127,13 @@ defmodule CssParser.ParserTest do
 
       assert at_rule.name == "@media"
       assert at_rule.value == []
-      assert at_rule.block == %Parser.SimpleBlock{
+      assert at_rule.block == %SimpleBlock{
         terminator: :rcurly,
         value: [
           {:whitespace, "\n  "},
           {:ident, "body"},
           {:whitespace, " "},
-          %Parser.SimpleBlock{
+          %SimpleBlock{
             terminator: :rcurly,
             value: [
               whitespace: "\n    ",
@@ -169,7 +156,7 @@ defmodule CssParser.ParserTest do
         {:whitespace, " "},
         {:ident, "and"},
         {:whitespace, " "},
-        %Parser.SimpleBlock{
+        %SimpleBlock{
           terminator: :rparen,
           value: [
             {:ident, "max-width"},
