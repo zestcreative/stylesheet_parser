@@ -43,7 +43,14 @@ defmodule CssParser.Syntax.Tokenizer do
     |> concat(
       choice([
         times(hex_digit, min: 1, max: 6) |> optional(whitespace),
-        lookahead_not(choice([newline, hex_digit]))
+        utf8_char([
+          {:not, ?a..?f},
+          {:not, ?A..?F},
+          {:not, ?0..?9},
+          {:not, ?\r},
+          {:not, ?\n},
+          {:not, ?\f},
+        ])
       ])
     )
 

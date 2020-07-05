@@ -46,6 +46,16 @@ defmodule CssParser.Selector.ParserTest do
       ]
     end
 
+    test "class wih escaped character" do
+      tokens = ~S|.sm\:justify-center{justify-content:center}| |> tokenize() |> IO.inspect
+      {selectors, _} = Parser.selector_list(tokens)
+
+      assert selectors == [
+        type_selector: "E",
+        class_selector: ".warning"
+      ]
+    end
+
     test "type selectors" do
       tokens = "E" |> tokenize()
       {selectors, _} = Parser.selector_list(tokens)
