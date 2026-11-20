@@ -11,7 +11,7 @@ a [Selectors Level 4](https://www.w3.org/TR/selectors-4/) selector parser.
   .card > .title { padding: var(--space-s) 12px; }
   """)
 
-[root, media, card] = stylesheet.rules
+%CssParser.Stylesheet{rules: [root, media, card], errors: []} = stylesheet
 %CssParser.QualifiedRule{prelude: [%CssParser.SimpleSelector{type: :pseudo_class, value: ":root"}]} = root
 %CssParser.AtRule{name: "@media", block: [%CssParser.QualifiedRule{}]} = media
 
@@ -23,9 +23,15 @@ a [Selectors Level 4](https://www.w3.org/TR/selectors-4/) selector parser.
 
 - Tokens are `{type, value, metadata}`, like Elixir AST, with `[line: l, column: c]` metadata. Rules, declarations, functions and simple blocks
   carry the `line` and `column` where they start; the values inside them are `{type, value}`.
-- A qualified rule's `prelude` is its selector list, and its `block` its declarations. An at-rule
-  whose block holds rules (`@media`, `@supports`, …) has its rules as its `block`; others have
-  their declarations.
-- Malformed input is `{:error, %CssParser.Syntax.Parser.ParseError{message, line, column}}`.
-- `to_string/1` serializes what it parsed. Comments are dropped and whitespace normalized, so the
-  output parses to the same rules again.
+- A token's value is its source text: strings keep their quotes, and escapes stay escaped.
+- A qualified rule's `prelude` is its selector list (in `@keyframes`, its component values, such
+  as `50%`). A block, a style rule's or an at-rule's, is its declarations and rules in order, with
+  [nested](https://www.w3.org/TR/css-nesting-1/) style rules and `&`. `:is()`, `:where()`,
+  `:not()` and the `:nth-*()` pseudo-classes are a `CssParser.PseudoClass` of their parsed
+  selectors and An+B, `{a, b}`.
+- Malformed input is dropped as the spec recovers from it, and each
+  `%CssParser.Syntax.Parser.ParseError{message, line, column}` is in the stylesheet's `errors`: a
+  declaration with no colon, a rule whose selectors don't parse, an unclosed block.
+- `to_string/1` serializes what it parsed. Comments are dropped (a `/**/` stays only where two
+  tokens would otherwise run together) and whitespace normalized, so the output parses to the same
+  rules again.

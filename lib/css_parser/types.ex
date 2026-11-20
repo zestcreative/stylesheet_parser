@@ -3,9 +3,51 @@ defmodule CssParser.Serialize do
   # CSS text for parsed values. Comments are gone, and whitespace inside rules is normalized, so
   # serializing what a stylesheet parses to parses to the same rules again.
 
-  alias CssParser.{Function, SimpleBlock, SimpleSelector, CompoundSelector, ComplexSelector}
+  alias CssParser.{Function, PseudoClass, SimpleBlock, SimpleSelector}
+  alias CssParser.{CompoundSelector, ComplexSelector}
+  alias CssParser.Syntax.Tokenizer
 
-  def values(values), do: Enum.map_join(values, &value/1)
+  # Component values written next to each other, with a `/**/` between two that would read back
+  # as one token otherwise, such as `1px` and `2px` that a comment separated.
+  def values([]), do: ""
+
+  def values([first | rest]) do
+    {iodata, _last} =
+      Enum.reduce(rest, {[value(first)], first}, fn current, {iodata, previous} ->
+        {[iodata, separator(previous, current), value(current)], current}
+      end)
+
+    IO.iodata_to_binary(iodata)
+  end
+
+  defp separator(previous, current) do
+    case {last_text(previous), first_text(current)} do
+      {:none, _} -> ""
+      {_, :none} -> ""
+      {left, right} -> if reads_back?(left, right), do: "", else: "/**/"
+    end
+  end
+
+  # The text at either end of a component value that a neighbour could run into. Whitespace and
+  # closing brackets end tokens on their own.
+  defp last_text({:whitespace, _}), do: :none
+  defp last_text({_type, _value} = token), do: value(token)
+  defp last_text(%{}), do: :none
+
+  defp first_text({:whitespace, _}), do: :none
+  defp first_text({_type, _value} = token), do: value(token)
+  defp first_text(%Function{name: name}), do: name <> "("
+  defp first_text(%SimpleBlock{} = block), do: block |> Kernel.to_string() |> String.first()
+
+  defp reads_back?(left, right) do
+    case Tokenizer.consume(left <> right) do
+      {:ok, [{type1, value1, _}, {type2, value2, _}], "", _, _, _} ->
+        [value({type1, value1}), value({type2, value2})] == [left, right]
+
+      _ ->
+        false
+    end
+  end
 
   def value({:dimension, [number, unit]}), do: number <> unit
   def value({:percentage, number}), do: number <> "%"
@@ -20,12 +62,15 @@ defmodule CssParser.Serialize do
   def selector(%CompoundSelector{value: parts}),
     do: parts |> List.flatten() |> Enum.map_join(&part/1)
 
-  def selector(%ComplexSelector{value: [first | rest]}),
-    do: selector(first) <> (rest |> List.flatten() |> Enum.map_join(&part/1))
+  # A relative selector starts with its combinator, as `> a`.
+  def selector(%ComplexSelector{value: parts}),
+    do: parts |> List.flatten() |> Enum.map_join(&part/1) |> String.trim_leading()
 
   def selector(%Function{} = function), do: Kernel.to_string(function)
 
   defp part({:pseudo_class, %Function{} = function}), do: ":" <> Kernel.to_string(function)
+  defp part({:pseudo_class, %PseudoClass{} = pseudo_class}), do: ":" <> pseudo_class(pseudo_class)
+  defp part({:pseudo_element, %Function{} = function}), do: "::" <> Kernel.to_string(function)
   defp part({:descendant_combinator, _}), do: " "
 
   defp part({combinator, value})
@@ -40,14 +85,37 @@ defmodule CssParser.Serialize do
   defp part({_type, value}) when is_binary(value), do: value
   defp part(%{} = selector), do: selector(selector)
 
-  def block(%SimpleBlock{} = block), do: " " <> Kernel.to_string(block)
+  def pseudo_class(%PseudoClass{name: name, an_b: nil, selectors: selectors}),
+    do: "#{name}(#{selectors(selectors)})"
+
+  def pseudo_class(%PseudoClass{name: name, an_b: an_b, selectors: []}),
+    do: "#{name}(#{an_b(an_b)})"
+
+  def pseudo_class(%PseudoClass{name: name, an_b: an_b, selectors: selectors}),
+    do: "#{name}(#{an_b(an_b)} of #{selectors(selectors)})"
+
+  # As CSSOM serializes An+B: `odd` as `2n+1`.
+  defp an_b({0, b}), do: Integer.to_string(b)
+  defp an_b({a, b}), do: n(a) <> signed(b)
+
+  defp n(1), do: "n"
+  defp n(-1), do: "-n"
+  defp n(a), do: "#{a}n"
+
+  defp signed(0), do: ""
+  defp signed(b) when b > 0, do: "+#{b}"
+  defp signed(b), do: Integer.to_string(b)
+
   def block(nil), do: ";"
   def block(contents), do: " { " <> Enum.map_join(contents, " ", &Kernel.to_string/1) <> " }"
 end
 
 defmodule CssParser.Stylesheet do
-  @moduledoc "A parsed stylesheet: its rules, in order."
-  defstruct rules: []
+  @moduledoc """
+  A parsed stylesheet: its rules, in order, and the `CssParser.Syntax.Parser.ParseError`s for what
+  it dropped or recovered from.
+  """
+  defstruct rules: [], errors: []
 
   defimpl String.Chars do
     def to_string(%{rules: rules}), do: Enum.map_join(rules, "\n", &Kernel.to_string/1)
@@ -57,8 +125,7 @@ end
 defmodule CssParser.AtRule do
   @moduledoc """
   An at-rule, such as `@media`: its `name` with its `@`, its `prelude` of component values, and its
-  `block`: nil for one that ends with `;`, its rules for a rule-list at-rule such as `@media`, its
-  declarations for another, or a `CssParser.SimpleBlock` when those don't parse.
+  `block`: nil for one that ends with `;`, else its declarations and rules, in order.
   """
   defstruct [:name, :block, :line, :column, prelude: [], top_level: false]
 
@@ -74,8 +141,8 @@ end
 
 defmodule CssParser.QualifiedRule do
   @moduledoc """
-  A style rule: its `prelude`, the selector list (or its component values when they aren't
-  selectors, such as a keyframe's `50%`), and its `block` of declarations.
+  A style rule: its `prelude`, the selector list (or, in `@keyframes`, the keyframe selectors'
+  component values, such as `50%`), and its `block` of declarations and nested rules, in order.
   """
   defstruct [:line, :column, block: [], prelude: [], top_level: false]
 
@@ -146,5 +213,18 @@ defmodule CssParser.SimpleBlock do
       {open, close} = %{rcurly: {"{", "}"}, rbracket: {"[", "]"}, rparen: {"(", ")"}}[terminator]
       open <> CssParser.Serialize.values(value) <> close
     end
+  end
+end
+
+defmodule CssParser.PseudoClass do
+  @moduledoc """
+  A functional pseudo-class whose arguments parse, its `name` without the `:`: the `selectors` of
+  `:is()`, `:where()` and `:not()`, and the `an_b` of the `:nth-*()` ones, `{a, b}` as `2n+1` is
+  `{2, 1}`, with the `selectors` after `of` of `:nth-child()` and `:nth-last-child()`.
+  """
+  defstruct [:name, :an_b, selectors: []]
+
+  defimpl String.Chars do
+    def to_string(pseudo_class), do: CssParser.Serialize.pseudo_class(pseudo_class)
   end
 end

@@ -8,6 +8,7 @@ defmodule CssParser.ParserTest do
     CompoundSelector,
     Declaration,
     Function,
+    PseudoClass,
     QualifiedRule,
     SimpleBlock,
     SimpleSelector
@@ -16,7 +17,7 @@ defmodule CssParser.ParserTest do
   doctest Parser
 
   describe "build_at_rule" do
-    test "returns a+bn tokens" do
+    test "returns An+B as {a, b}" do
       css = """
       .first span:nth-child(2n+1),
       .second span:nth-child(2n+1),
@@ -26,7 +27,7 @@ defmodule CssParser.ParserTest do
       """
 
       {:ok, tokens} = CssParser.tokenize(css)
-      {:ok, [rule]} = Parser.parse_rules(tokens)
+      {:ok, [rule], []} = Parser.parse_rules(tokens)
 
       assert %QualifiedRule{
                line: 1,
@@ -41,7 +42,7 @@ defmodule CssParser.ParserTest do
                        %CompoundSelector{
                          value: [
                            type: "span",
-                           pseudo_class: %Function{name: "nth-child", value: [anb: "2n+1"]}
+                           pseudo_class: %PseudoClass{name: "nth-child", an_b: {2, 1}}
                          ]
                        }
                      ]

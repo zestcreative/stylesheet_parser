@@ -16,7 +16,8 @@ defmodule CssParser do
 
   @doc """
   Intended for the content of at-rules such as @media. It differs from `parse_stylesheet/1` in the
-  handling of <CDO-token> and <CDC-token>.
+  handling of <CDO-token> and <CDC-token>. Returns `{:ok, rules, errors}`, with the
+  `CssParser.Syntax.Parser.ParseError`s for what it dropped or recovered from.
   """
   def parse_rules(css) when is_binary(css) do
     with {:ok, tokens} <- tokenize(css) do
@@ -45,7 +46,8 @@ defmodule CssParser do
 
   @doc """
   Used for the contents of a style attribute, which parses text into the contents of a single style
-  rule.
+  rule: its declarations, at-rules and nested rules. Returns `{:ok, contents, errors}`, with the
+  `CssParser.Syntax.Parser.ParseError`s for what it dropped or recovered from.
   """
   def parse_declarations(css) when is_binary(css) do
     with {:ok, tokens} <- tokenize(css) do
@@ -77,8 +79,13 @@ defmodule CssParser do
   @doc """
   The tokens of `css`, each `{type, value, metadata}` like Elixir AST, its metadata `[line: l, column: c]`
   where it starts (columns count bytes from 1). Comments are dropped.
+
+  The input is [preprocessed](https://www.w3.org/TR/css-syntax-3/#input-preprocessing) first:
+  `\\r\\n`, `\\r` and `\\f` become `\\n`, and NUL becomes U+FFFD.
   """
   def tokenize(css) do
+    css = css |> String.replace(["\r\n", "\r", "\f"], "\n") |> String.replace(<<0>>, "�")
+
     case Tokenizer.consume(css) do
       {:ok, tokens, "", _, _, _} ->
         {:ok, tokens}
