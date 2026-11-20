@@ -1,15 +1,43 @@
 defmodule CssParser.Syntax.Parser do
+  @moduledoc """
+  The parsing algorithms of [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/#parsing),
+  over the tokenizer's tokens, `{type, value, {line, column}}`.
+
+  Rules, declarations, functions and simple blocks carry the `line` and `column` where they start.
+  The component values inside them (a declaration's value, an at-rule's prelude, a block's or a
+  function's value) are `{type, value}`, without positions.
+
+  A qualified rule's prelude is its selector list (`CssParser.Selector.Parser`) when the selectors
+  take the whole prelude, and its component values otherwise, such as a keyframe's `50%`. Its
+  block is its declarations. An at-rule whose block holds rules (`@media`, `@supports` and the
+  others in `rule_list_at_rules/0`) has its rules as its block; any other at-rule with a block
+  has its declarations, or the `CssParser.SimpleBlock` when they don't parse.
+
+  Malformed input is `{:error, %CssParser.Syntax.Parser.ParseError{}}`, with the line and column
+  where it is: an unclosed block or function, a qualified rule with no block, a declaration with
+  no colon, or anything else where a declaration belongs.
+  """
+
   alias CssParser.Selector.Parser, as: Selector
   alias CssParser.{AtRule, Declaration, QualifiedRule, Function, SimpleBlock, Stylesheet}
 
   defmodule ParseError do
-    defexception [:message, :remaining_tokens]
+    defexception [:message, :line, :column]
+
+    @impl true
+    def message(%{message: message, line: nil}), do: message
+
+    def message(%{message: message, line: line, column: column}),
+      do: "#{line}:#{column}: #{message}"
   end
+
+  @rule_list_at_rules ~w(@media @supports @layer @container @scope @starting-style @document @keyframes)
+
+  @doc "The at-rules whose block is a list of rules."
+  def rule_list_at_rules, do: @rule_list_at_rules
 
   @doc """
   # 5.3.2. Parse a stylesheet
-
-  To parse a stylesheet from a stream of tokens:
 
   1. Create a new stylesheet.
   2. Consume a list of rules from the stream of tokens, with the top-level flag set. Let the return value be rules.
@@ -25,52 +53,34 @@ defmodule CssParser.Syntax.Parser do
   @doc """
   # 5.3.3. Parse a list of rules
 
-  To parse a list of rules from a stream of tokens:
-
   1. Consume a list of rules from the stream of tokens, with the top-level flag unset.
   2. Return the returned list.
   """
-  def parse_rules(tokens), do: parse_rules(tokens, top_level: false)
-  def parse_rules(tokens, top_level: top_level) do
-    do_parse_rules(tokens, [], top_level)
-  end
+  def parse_rules(tokens, opts \\ []), do: consume_rules(tokens, [], opts[:top_level] || false)
 
-  defp do_parse_rules([], rules, _top_level), do: {:ok, Enum.reverse(rules)}
-  defp do_parse_rules([{:whitespace, _} | rest], rules, top_level) do
-    do_parse_rules(rest, rules, top_level)
-  end
-  defp do_parse_rules([{:cdo, _} | rest], rules, true) do
-    do_parse_rules(rest, rules, true)
-  end
-  defp do_parse_rules([{:cdo, _} | _rest] = tokens, rules, false) do
-    with {:ok, qualified_rule, rest} <- build_qualified_rule(tokens, top_level: false) do
-      do_parse_rules(rest, [qualified_rule | rules], false)
-    end
-  end
-  defp do_parse_rules([{:cdc, _} | rest], rules, true) do
-    do_parse_rules(rest, rules, true)
-  end
-  defp do_parse_rules([{:cdc, _} | _rest] = tokens, rules, false) do
-    with {:ok, qualified_rule, rest} <- build_qualified_rule(tokens, top_level: false) do
-      do_parse_rules(rest, [qualified_rule | rules], false)
-    end
-  end
-  defp do_parse_rules([{:at_keyword, _} | _] = tokens, rules, top_level) do
+  # 5.4.1. Consume a list of rules
+  defp consume_rules([], rules, _top_level), do: {:ok, Enum.reverse(rules)}
+
+  defp consume_rules([{:whitespace, _, _} | rest], rules, top_level),
+    do: consume_rules(rest, rules, top_level)
+
+  defp consume_rules([{cdo_or_cdc, _, _} | rest], rules, true) when cdo_or_cdc in [:cdo, :cdc],
+    do: consume_rules(rest, rules, true)
+
+  defp consume_rules([{:at_keyword, _, _} | _] = tokens, rules, top_level) do
     with {:ok, at_rule, rest} <- build_at_rule(tokens, top_level: top_level) do
-      do_parse_rules(rest, [at_rule | rules], top_level)
-    end
-  end
-  defp do_parse_rules(tokens, rules, top_level) do
-    with {:ok, qualified_rule, rest} <- build_qualified_rule(tokens, top_level: top_level) do
-      do_parse_rules(rest, [qualified_rule | rules], top_level)
+      consume_rules(rest, [at_rule | rules], top_level)
     end
   end
 
+  defp consume_rules(tokens, rules, top_level) do
+    with {:ok, qualified_rule, rest} <- build_qualified_rule(tokens, top_level: top_level) do
+      consume_rules(rest, [qualified_rule | rules], top_level)
+    end
+  end
 
   @doc """
   # 5.3.4. Parse a rule
-
-  To parse a rule from a stream of tokens:
 
   1. While the next input token is a `<whitespace-token>`, consume the next input token.
   2. If the next input token is an `<EOF-token>`, return a syntax error.
@@ -79,102 +89,87 @@ defmodule CssParser.Syntax.Parser do
   3. While the next input token is a `<whitespace-token>`, consume the next input token.
   4. If the next input token is an `<EOF-token>`, return rule. Otherwise, return a syntax error.
   """
-  def parse_rule(tokens), do: parse_rule(tokens, top_level: false)
-  def parse_rule(tokens, top_level: top_level) do
-    do_parse_rule(tokens, top_level)
-  end
+  def parse_rule(tokens, opts \\ []) do
+    top_level = opts[:top_level] || false
 
-  defp do_parse_rule([], _top_level), do: {:error, %ParseError{message: "syntax error"}}
-  defp do_parse_rule([{:whitespace, _} | rest], top_level) do
-    do_parse_rule(rest, top_level)
-  end
-
-  defp do_parse_rule([{:at_keyword, _} | _rest] = tokens, top_level) do
-    with {:ok, at_rule, _rest} <- build_at_rule(tokens, top_level: top_level) do
-      {:ok, at_rule}
+    with [first | _] = tokens <- skip_whitespace(tokens),
+         {:ok, rule, rest} <- build_rule(first, tokens, top_level),
+         [] <- skip_whitespace(rest) do
+      {:ok, rule}
+    else
+      [] -> error("expected a rule", nil)
+      [extra | _] -> error("expected one rule", extra)
+      {:error, _} = error -> error
     end
   end
 
-  defp do_parse_rule(tokens, top_level) do
-    with {:ok, qualified_rule, _rest} <- build_qualified_rule(tokens, top_level: top_level) do
-      {:ok, qualified_rule}
-    end
-  end
+  defp build_rule({:at_keyword, _, _}, tokens, top_level),
+    do: build_at_rule(tokens, top_level: top_level)
+
+  defp build_rule(_first, tokens, top_level),
+    do: build_qualified_rule(tokens, top_level: top_level)
 
   @doc """
   # 5.3.5. Parse a declaration
-
-  **Note**: Unlike "Parse a list of declarations", this parses only a declaration and not an at-rule.
-
-  To parse a declaration:
 
   1. While the next input token is a `<whitespace-token>`, consume the next input token.
   2. If the next input token is not an `<ident-token>`, return a syntax error.
   3. Consume a declaration. If anything was returned, return it. Otherwise, return a syntax error.
   """
-  def parse_declaration([{:whitespace, _} | tokens]), do: parse_declaration(tokens)
-  def parse_declaration([{:ident, _} | _rest] = tokens) do
-    with {:ok, declaration, _rest} <- build_declaration(tokens) do
-      {:ok, declaration}
+  def parse_declaration(tokens) do
+    case skip_whitespace(tokens) do
+      [{:ident, _, _} | _] = tokens ->
+        # A declaration written on its own may end with its `;`.
+        with {:ok, components} <- consume_components(tokens) do
+          components |> trim_whitespace() |> drop_semicolon() |> build_declaration()
+        end
+
+      [other | _] ->
+        error("expected a declaration", other)
+
+      [] ->
+        error("expected a declaration", nil)
     end
   end
-  def parse_declaration(_tokens), do: {:error, %ParseError{message: "invalid declaration"}}
 
   @doc """
   # 5.3.6. Parse a list of declarations
 
-  **Note** Despite the name, this actually parses a mixed list of declarations and at-rules, as CSS 2.1 does for @page. Unexpected at-rules (which could be all of them, in a given context) are invalid and should be ignored by the consumer.
-
-  To parse a list of declarations:
-
-  1. Consume a list of declarations.
-  2. Return the returned list.
-
-  # 5.4.4. Consume a list of declarations
-
-  To consume a list of declarations:
-
-  Create an initially empty list of declarations.
-
-  Repeatedly consume the next input token:
-
-  - `<whitespace-token>` - Do nothing.
-  - `<semicolon-token>` - Do nothing.
-  - `<EOF-token>` - Return the list of declarations.
-  - `<at-keyword-token>` - Reconsume the current input token. Consume an at-rule. Append the returned rule to the list of declarations.
-  - `<ident-token>` - Initialize a temporary list initially filled with the current input token. As long as the next input token is anything other than a `<semicolon-token>` or `<EOF-token>`, consume a component value and append it to the temporary list. Consume a declaration from the temporary list. If anything was returned, append it to the list of declarations.
-  - anything else - This is a parse error. Reconsume the current input token. As long as the next input token is anything other than a `<semicolon-token>` or `<EOF-token>`, consume a component value and throw away the returned value.
+  **Note** Despite the name, this actually parses a mixed list of declarations and at-rules, as
+  CSS 2.1 does for @page.
   """
-  def parse_declarations(tokens), do: do_parse_declarations(tokens, [])
-
-  defp do_parse_declarations([], declarations), do: {:ok, Enum.reverse(declarations)}
-
-  defp do_parse_declarations([{:whitespace, _} | rest], declarations) do
-    do_parse_declarations(rest, declarations)
-  end
-
-  defp do_parse_declarations([{:semicolon, _} | rest], declarations) do
-    do_parse_declarations(rest, declarations)
-  end
-
-  defp do_parse_declarations([{:at_keyword, _} | _rest] = tokens, declarations) do
-    with {:ok, at_rule, tokens} <- build_at_rule(tokens) do
-      do_parse_declarations(tokens, [at_rule | declarations])
+  def parse_declarations(tokens) do
+    with {:ok, components} <- consume_components(tokens) do
+      consume_declarations(components, [])
     end
   end
 
-  defp do_parse_declarations([{:ident, _} | _rest] = tokens, declarations) do
-    with {:ok, declaration, tokens} <- build_declaration(tokens) do
-      do_parse_declarations(tokens, [declaration | declarations])
+  # 5.4.4. Consume a list of declarations, over component values.
+  defp consume_declarations([], declarations), do: {:ok, Enum.reverse(declarations)}
+
+  defp consume_declarations([{skip, _, _} | rest], declarations)
+       when skip in [:whitespace, :semicolon],
+       do: consume_declarations(rest, declarations)
+
+  defp consume_declarations([{:at_keyword, _, _} | _] = components, declarations) do
+    with {:ok, at_rule, rest} <- build_at_rule(components) do
+      consume_declarations(rest, [at_rule | declarations])
     end
   end
 
-  defp do_parse_declarations(tokens, _declarations), do: %ParseError{message: "declarations error", remaining_tokens: tokens}
+  defp consume_declarations([{:ident, _, _} | _] = components, declarations) do
+    {declaration, rest} = Enum.split_while(components, &(not match?({:semicolon, _, _}, &1)))
+
+    with {:ok, declaration} <- build_declaration(declaration) do
+      consume_declarations(rest, [declaration | declarations])
+    end
+  end
+
+  defp consume_declarations([other | _], _declarations),
+    do: error("expected a declaration", other)
 
   @doc """
   # 5.3.7. Parse a component value
-
-  To parse a component value:
 
   1. While the next input token is a `<whitespace-token>`, consume the next input token.
   2. If the next input token is an `<EOF-token>`, return a syntax error.
@@ -182,42 +177,32 @@ defmodule CssParser.Syntax.Parser do
   4. While the next input token is a `<whitespace-token>`, consume the next input token.
   5. If the next input token is an `<EOF-token>`, return value. Otherwise, return a syntax error.
   """
-  def parse_component_value([{:whitespace, _} | tokens]), do: parse_component_value(tokens)
-  def parse_component_value([]), do: {:error, %ParseError{message: "invalid component value"}}
-  def parse_component_value(tokens), do: do_parse_component_value(tokens, nil)
-
-  defp do_parse_component_value([], nil), do: {:error, %ParseError{message: "invalid component value"}}
-  defp do_parse_component_value([{:whitespace, _} | rest], value) do
-    do_parse_component_value(rest, value)
+  def parse_component_value(tokens) do
+    with [_ | _] = tokens <- skip_whitespace(tokens),
+         {:ok, value, rest} <- build_component_value(tokens),
+         [] <- skip_whitespace(rest) do
+      {:ok, plain(value)}
+    else
+      [] -> error("expected a component value", nil)
+      [extra | _] -> error("expected one component value", extra)
+      {:error, _} = error -> error
+    end
   end
-  defp do_parse_component_value([{_, value} | rest], nil) do
-    do_parse_component_value(rest, value)
-  end
-  defp do_parse_component_value(rest, value), do: {:ok, value, rest}
 
   @doc """
   # 5.3.8. Parse a list of component values
 
-  To parse a list of component values:
-
-  1. Repeatedly consume a component value until an `<EOF-token>` is returned, appending the returned values (except the final `<EOF-token>`) into a list. Return the list.
+  1. Repeatedly consume a component value until an `<EOF-token>` is returned, appending the
+     returned values (except the final `<EOF-token>`) into a list. Return the list.
   """
-  def parse_component_values(tokens), do: do_parse_component_values(tokens, [])
-
-  defp do_parse_component_values([], values) do
-    {:ok, Enum.reverse(values)}
-  end
-  defp do_parse_component_values(tokens, values) do
-    with {:ok, value, rest} <- parse_component_value(tokens) do
-      do_parse_component_value(rest, [value | values])
+  def parse_component_values(tokens) do
+    with {:ok, components} <- consume_components(tokens) do
+      {:ok, Enum.map(components, &plain/1)}
     end
   end
 
-
   @doc """
   # 5.4.2. Consume an at-rule
-
-  To consume an at-rule:
 
   Consume the next input token. Create a new at-rule with its name set to the value of the current
   input token, its prelude initially set to an empty list, and its value initially set to nothing.
@@ -227,33 +212,62 @@ defmodule CssParser.Syntax.Parser do
   - `<semicolon-token>` - Return the at-rule.
   - `<EOF-token>` - This is a parse error. Return the at-rule.
   - `<{-token>` - Consume a simple block and assign it to the at-rule’s block. Return the at-rule.
-  - anything else - Reconsume the current input token. Consume a component value. Append the returned value to the at-rule’s prelude.
+  - anything else - Reconsume the current input token. Consume a component value. Append the
+    returned value to the at-rule’s prelude.
   """
-  def build_at_rule([{:at_keyword, name} | tokens], opts \\ []) do
-    at_rule = %AtRule{name: name, top_level: opts[:top_level] || false}
-    with {:ok, at_rule, rest} <- do_build_at_rule(tokens, at_rule) do
-      {:ok, at_rule, rest}
-    end
+  def build_at_rule([{:at_keyword, name, {line, column}} | tokens], opts \\ []) do
+    at_rule = %AtRule{
+      name: name,
+      line: line,
+      column: column,
+      top_level: opts[:top_level] || false
+    }
+
+    consume_at_rule(tokens, at_rule, [])
   end
-  def do_build_at_rule([], at_rule), do: {:error, %ParseError{message: "invalid component value", remaining_tokens: [at_rule]}}
-  def do_build_at_rule([{:semicolon, _} | rest], at_rule) do
-    {:ok, %{at_rule | prelude: Enum.reverse(at_rule.prelude)}, rest}
-  end
-  def do_build_at_rule([{:lcurly, _} | _] = tokens, at_rule) do
-    with {:ok, simple_block, rest} <- build_simple_block(tokens) do
-      {:ok, %{at_rule | prelude: Enum.reverse(at_rule.prelude), block: simple_block}, rest}
-    end
-  end
-  def do_build_at_rule(tokens, at_rule) do
-    with {:ok, value, rest} <- build_component_value(tokens) do
-      do_build_at_rule(rest, %{at_rule | prelude: [value | at_rule.prelude]})
+
+  defp consume_at_rule([], at_rule, prelude), do: {:ok, finish_at_rule(at_rule, prelude), []}
+
+  defp consume_at_rule([{:semicolon, _, _} | rest], at_rule, prelude),
+    do: {:ok, finish_at_rule(at_rule, prelude), rest}
+
+  defp consume_at_rule([block | rest], at_rule, prelude)
+       when is_struct(block, SimpleBlock) and block.terminator == :rcurly,
+       do: at_rule_block(block, rest, at_rule, prelude)
+
+  defp consume_at_rule([{:lcurly, _, _} | _] = tokens, at_rule, prelude) do
+    with {:ok, block, rest} <- build_simple_block(tokens) do
+      at_rule_block(block, rest, at_rule, prelude)
     end
   end
 
+  defp consume_at_rule(tokens, at_rule, prelude) do
+    with {:ok, value, rest} <- build_component_value(tokens) do
+      consume_at_rule(rest, at_rule, [value | prelude])
+    end
+  end
+
+  defp at_rule_block(
+         %SimpleBlock{value: value} = block,
+         rest,
+         %AtRule{name: name} = at_rule,
+         prelude
+       ) do
+    contents =
+      if String.downcase(name) in @rule_list_at_rules,
+        do: parse_rules(value),
+        else: with({:error, _} <- consume_declarations(value, []), do: {:ok, plain(block)})
+
+    with {:ok, contents} <- contents do
+      {:ok, %{finish_at_rule(at_rule, prelude) | block: contents}, rest}
+    end
+  end
+
+  defp finish_at_rule(at_rule, prelude),
+    do: %{at_rule | prelude: prelude |> Enum.reverse() |> trim_whitespace() |> Enum.map(&plain/1)}
 
   @doc """
-  5.4.3. Consume a qualified rule
-  To consume a qualified rule:
+  # 5.4.3. Consume a qualified rule
 
   Create a new qualified rule with its prelude initially set to an empty list, and its value
   initially set to nothing.
@@ -261,167 +275,235 @@ defmodule CssParser.Syntax.Parser do
   Repeatedly consume the next input token:
 
   - `<EOF-token>` - This is a parse error. Return nothing.
-  - `<{-token>` - Consume a simple block and assign it to the qualified rule’s block. Return the qualified rule.
-  - anything else - Reconsume the current input token. Consume a component value. Append the returned value to the qualified rule’s prelude.
+  - `<{-token>` - Consume a simple block and assign it to the qualified rule’s block. Return the
+    qualified rule.
+  - anything else - Reconsume the current input token. Consume a component value. Append the
+    returned value to the qualified rule’s prelude.
   """
-  def build_qualified_rule(tokens, opts \\ [])
-  def build_qualified_rule(tokens, opts) do
-    qualified_rule = %QualifiedRule{top_level: opts[:top_level] || false}
-    with {:ok, qualified_rule, rest} <- do_build_qualified_rule(tokens, qualified_rule),
-         {:ok, declarations} <- qualified_rule.block.value |> parse_declarations() do
-      {selectors, _} = qualified_rule.prelude |> Enum.reverse() |> Selector.selector_list()
-      {:ok, %{qualified_rule | block: true, value: declarations, prelude: selectors}, rest}
-    end
-  end
-  def do_build_qualified_rule([], _qualified_rule), do: {:error, %ParseError{message: "invalid qualified rule"}}
-
-  def do_build_qualified_rule([{:lcurly, _} | _] = tokens, qualified_rule) do
-    with {:ok, simple_block, rest} <- build_simple_block(tokens) do
-      {:ok, %{qualified_rule | block: simple_block}, rest}
-    end
+  def build_qualified_rule(tokens, opts \\ []) do
+    {line, column} = position(hd(tokens))
+    rule = %QualifiedRule{line: line, column: column, top_level: opts[:top_level] || false}
+    consume_qualified_rule(tokens, rule, [])
   end
 
-  def do_build_qualified_rule(tokens, qualified_rule) do
-    with {:ok, component_value, rest} <- build_component_value(tokens) do
-      do_build_qualified_rule(rest, %{qualified_rule | prelude: [component_value | qualified_rule.prelude]})
+  defp consume_qualified_rule([], rule, _prelude),
+    do: error("expected { after the selector", {nil, nil, {rule.line, rule.column}})
+
+  defp consume_qualified_rule([block | rest], rule, prelude)
+       when is_struct(block, SimpleBlock) and block.terminator == :rcurly,
+       do: qualified_rule_block(block, rest, rule, prelude)
+
+  defp consume_qualified_rule([{:lcurly, _, _} | _] = tokens, rule, prelude) do
+    with {:ok, block, rest} <- build_simple_block(tokens) do
+      qualified_rule_block(block, rest, rule, prelude)
+    end
+  end
+
+  defp consume_qualified_rule(tokens, rule, prelude) do
+    with {:ok, value, rest} <- build_component_value(tokens) do
+      consume_qualified_rule(rest, rule, [value | prelude])
+    end
+  end
+
+  defp qualified_rule_block(%SimpleBlock{value: value}, rest, rule, prelude) do
+    prelude = prelude |> Enum.reverse() |> trim_whitespace() |> Enum.map(&plain/1)
+
+    with {:ok, declarations} <- consume_declarations(value, []) do
+      {:ok, %{rule | prelude: selectors(prelude), block: declarations}, rest}
+    end
+  end
+
+  # The selector list when it takes the whole prelude, else the component values.
+  defp selectors(prelude) do
+    case Selector.selector_list(prelude) do
+      {[_ | _] = selectors, []} -> selectors
+      _ -> prelude
     end
   end
 
   @doc """
   # 5.4.7. Consume a simple block
 
-  Note: This algorithm assumes that the current input token has already been checked to be an
-  `<{-token>`, `<[-token>`, or `<(-token>`.
-
-  To consume a simple block:
-
-  The ending token is the mirror variant of the current input token. (E.g. if it was called with `<[-token>`, the ending token is `<]-token>`.)
-
-  Create a simple block with its associated token set to the current input token and with a value with is initially an empty list.
-
-  Repeatedly consume the next input token and process it as follows:
+  The ending token is the mirror variant of the current input token. Repeatedly consume the next
+  input token and process it as follows:
 
   - ending token - Return the block.
   - `<EOF-token>` - This is a parse error. Return the block.
-  - anything else: Reconsume the current input token. Consume a component value and append it to the value of the block.
+  - anything else - Reconsume the current input token. Consume a component value and append it to
+    the value of the block.
 
-  **Note**: CSS has an unfortunate syntactic ambiguity between blocks that can contain declarations and blocks that can contain qualified rules, so any "consume" algorithms that handle rules will initially use this more generic algorithm rather than the more specific consume a list of declarations or consume a list of rules algorithms. These more specific algorithms are instead invoked when grammars are applied, depending on whether it contains a `<declaration-list>` or a `<rule-list>`/`<stylesheet>`.
+  An unclosed block is an error here, at the block's opening token.
   """
-  def build_simple_block([{:lcurly, _} | tokens]) do
-    do_build_simple_block(tokens, %SimpleBlock{terminator: :rcurly})
-  end
-  def build_simple_block([{:lbracket, _} | tokens]) do
-    do_build_simple_block(tokens, %SimpleBlock{terminator: :rbracket})
-  end
-  def build_simple_block([{:lparen, _} | tokens]) do
-    do_build_simple_block(tokens, %SimpleBlock{terminator: :rparen})
+  def build_simple_block([{opening, _, {line, column}} | tokens])
+      when opening in [:lcurly, :lbracket, :lparen] do
+    terminator = %{lcurly: :rcurly, lbracket: :rbracket, lparen: :rparen}[opening]
+
+    consume_simple_block(
+      tokens,
+      %SimpleBlock{terminator: terminator, line: line, column: column},
+      []
+    )
   end
 
-  defp do_build_simple_block([], simple_block), do: {:error, %ParseError{message: "invalid simple block", remaining_tokens: [simple_block]}}
-  defp do_build_simple_block([{terminator, _} | rest], %{terminator: terminator} = simple_block) do
-    {:ok, %{simple_block | value: Enum.reverse(simple_block.value)}, rest}
-  end
-  defp do_build_simple_block(tokens, simple_block) do
-    with {:ok, component_value, rest} = build_component_value(tokens) do
-      do_build_simple_block(rest, %{simple_block | value: [component_value | simple_block.value]})
+  defp consume_simple_block([], block, _value),
+    do: error("unclosed #{opening(block.terminator)}", {nil, nil, {block.line, block.column}})
+
+  defp consume_simple_block(
+         [{terminator, _, _} | rest],
+         %{terminator: terminator} = block,
+         value
+       ),
+       do: {:ok, %{block | value: Enum.reverse(value)}, rest}
+
+  defp consume_simple_block(tokens, block, value) do
+    with {:ok, component, rest} <- build_component_value(tokens) do
+      consume_simple_block(rest, block, [component | value])
     end
   end
 
+  defp opening(:rcurly), do: "{"
+  defp opening(:rbracket), do: "["
+  defp opening(:rparen), do: "("
+
   @doc """
   # 5.4.8. Consume a function
-  Note: This algorithm assumes that the current input token has already been checked to be a `<function-token>`.
 
-  To consume a function:
-
-  Create a function with a name equal to the value of the current input token, and with a value which is initially an empty list. Repeatedly consume the next input token and process it as follows:
+  Create a function with a name equal to the value of the current input token (without its `(`),
+  and with a value which is initially an empty list. Repeatedly consume the next input token:
 
   - `<)-token>` - Return the function.
   - `<EOF-token>` - This is a parse error. Return the function.
-  - anything else - Reconsume the current input token. Consume a component value and append the returned value to the function’s value.
+  - anything else - Reconsume the current input token. Consume a component value and append the
+    returned value to the function’s value.
+
+  An unclosed function is an error here, at its name.
   """
-  def build_function([{:function, name} | tokens]) do
-    function = %Function{name: name}
-    do_build_function(tokens, function)
+  def build_function([{:function, name, {line, column}} | tokens]) do
+    consume_function(
+      tokens,
+      %Function{name: String.trim_trailing(name, "("), line: line, column: column},
+      []
+    )
   end
-  def do_build_function([], function), do: {:error, %ParseError{message: "invalid function", remaining_tokens: [function]}}
-  def do_build_function([{:rparen, _} | rest], function) do
-    {:ok, %{function | value: Enum.reverse(function.value)}, rest}
-  end
-  def do_build_function(tokens, function) do
-    with {:ok, component_value, rest} <- build_component_value(tokens) do
-      do_build_function(rest, %{function | value: [component_value | function.value]})
+
+  defp consume_function([], function, _value),
+    do: error("unclosed #{function.name}(", {nil, nil, {function.line, function.column}})
+
+  defp consume_function([{:rparen, _, _} | rest], function, value),
+    do: {:ok, %{function | value: Enum.reverse(value)}, rest}
+
+  defp consume_function(tokens, function, value) do
+    with {:ok, component, rest} <- build_component_value(tokens) do
+      consume_function(rest, function, [component | value])
     end
   end
 
   @doc """
   # 5.4.5. Consume a declaration
 
-  **Note**: This algorithm assumes that the next input token has already been checked to be an `<ident-token>`.
-
-  To consume a declaration:
-
-  Consume the next input token. Create a new declaration with its name set to the value of the current input token and its value initially set to the empty list.
+  Over component values that start with an `<ident-token>`:
 
   1. While the next input token is a `<whitespace-token>`, consume the next input token.
-  2. If the next input token is anything other than a `<colon-token>`, this is a parse error. Return nothing. Otherwise, consume the next input token.
+  2. If the next input token is anything other than a `<colon-token>`, this is a parse error.
+     Return nothing. Otherwise, consume the next input token.
   3. While the next input token is a `<whitespace-token>`, consume the next input token.
-  4. As long as the next input token is anything other than an `<EOF-token>`, consume a component value and append it to the declaration’s value.
-  5. If the last two non-`<whitespace-token>`s in the declaration’s value are a `<delim-token>` with the value "!" followed by an `<ident-token>` with a value that is an ASCII case-insensitive match for "important", remove them from the declaration’s value and set the declaration’s important flag to true.
+  4. As long as the next input token is anything other than an `<EOF-token>`, consume a component
+     value and append it to the declaration’s value.
+  5. If the last two non-`<whitespace-token>`s in the declaration’s value are a `<delim-token>`
+     with the value "!" followed by an `<ident-token>` with a value that is an ASCII
+     case-insensitive match for "important", remove them from the declaration’s value and set the
+     declaration’s important flag to true.
   6. While the last token in the declaration’s value is a `<whitespace-token>`, remove that token.
   7. Return the declaration.
   """
+  def build_declaration([{:ident, name, {line, column}} = ident | components]) do
+    case skip_whitespace(components) do
+      [{:colon, _, _} | value] ->
+        {value, important} = value |> trim_whitespace() |> important()
 
-  def build_declaration([{:whitespace, _}, {:ident, name} | tokens]) do
-    declaration = %Declaration{name: name}
-    do_build_declaration(tokens, declaration)
-  end
-  def build_declaration([{:ident, name} | tokens]) do
-    declaration = %Declaration{name: name}
-    do_build_declaration(tokens, declaration)
-  end
-  def build_declaration(tokens), do: {:error, %ParseError{message: "invalid declaration", remaining_tokens: [tokens]}}
+        {:ok,
+         %Declaration{
+           name: name,
+           value: Enum.map(value, &plain/1),
+           important: important,
+           line: line,
+           column: column
+         }}
 
-  defp do_build_declaration([], %{value: []}), do: {:error, %ParseError{message: "invalid declaration"}}
-  defp do_build_declaration([], declaration), do: finish_declaration(declaration, [])
-  defp do_build_declaration([{:whitespace, _} | rest], declaration) do
-    do_build_declaration(rest, declaration)
-  end
-  defp do_build_declaration([{:colon, _} | rest], declaration) do
-    do_build_declaration(rest, declaration)
-  end
-  defp do_build_declaration([{:semicolon, _} | rest], declaration) do
-    finish_declaration(declaration, rest)
-  end
-  defp do_build_declaration(tokens, declaration) do
-    with {:ok, component_value, rest} <- build_component_value(tokens) do
-      do_build_declaration(rest, %{declaration | value: [component_value | declaration.value]})
+      _ ->
+        error("expected : after #{name}", ident)
     end
   end
 
-  defp finish_declaration(%{value: [{:ident, important}, {:delim, "!"} | value]} = declaration, rest) do
-    if String.downcase(important) == "important" do
-      {:ok, %{declaration | value: Enum.reverse(value), important: true}, rest}
-    else
-      {:ok, %{declaration | value: Enum.reverse(value)}, rest}
+  defp important(value) do
+    case value |> Enum.reverse() |> skip_whitespace() do
+      [{:ident, word, _} | before] ->
+        case skip_whitespace(before) do
+          [{:delim, "!", _} | before] ->
+            if String.downcase(word) == "important",
+              do: {before |> Enum.reverse() |> trim_whitespace(), true},
+              else: {value, false}
+
+          _ ->
+            {value, false}
+        end
+
+      _ ->
+        {value, false}
     end
-  end
-  defp finish_declaration(declaration, rest) do
-    {:ok, %{declaration | value: Enum.reverse(declaration.value)}, rest}
   end
 
   @doc """
   # 5.4.6. Consume a component value
 
-  To consume a component value:
-
-  - If the current input token is a `<{-token>`, `<[-token>`, or `<(-token>`, consume a simple block and
-    return it.
+  - If the current input token is a `<{-token>`, `<[-token>`, or `<(-token>`, consume a simple
+    block and return it.
   - Otherwise, if the current input token is a `<function-token>`, consume a function and return it.
   - Otherwise, return the current input token.
   """
-  def build_component_value([{:lcurly, _} | _] = tokens), do: build_simple_block(tokens)
-  def build_component_value([{:lbracket, _} | _] = tokens), do: build_simple_block(tokens)
-  def build_component_value([{:lparen, _} | _] = tokens), do: build_simple_block(tokens)
-  def build_component_value([{:function, _} | _] = tokens), do: build_function(tokens)
-  def build_component_value([token | rest]), do: {:ok, token, rest}
+  def build_component_value([{opening, _, _} | _] = tokens)
+      when opening in [:lcurly, :lbracket, :lparen],
+      do: build_simple_block(tokens)
+
+  def build_component_value([{:function, _, _} | _] = tokens), do: build_function(tokens)
+  def build_component_value([component | rest]), do: {:ok, component, rest}
+
+  defp consume_components(tokens, components \\ [])
+  defp consume_components([], components), do: {:ok, Enum.reverse(components)}
+
+  defp consume_components(tokens, components) do
+    with {:ok, component, rest} <- build_component_value(tokens) do
+      consume_components(rest, [component | components])
+    end
+  end
+
+  # A component value without positions, as structs hold their values; structs keep their own.
+  defp plain({type, value, _position}), do: {type, value}
+  defp plain(%SimpleBlock{value: value} = block), do: %{block | value: Enum.map(value, &plain/1)}
+
+  defp plain(%Function{value: value} = function),
+    do: %{function | value: Enum.map(value, &plain/1)}
+
+  defp drop_semicolon(components) do
+    case Enum.reverse(components) do
+      [{:semicolon, _, _} | rest] -> Enum.reverse(rest)
+      _ -> components
+    end
+  end
+
+  defp skip_whitespace([{:whitespace, _, _} | rest]), do: skip_whitespace(rest)
+  defp skip_whitespace(components), do: components
+
+  defp trim_whitespace(components),
+    do: components |> skip_whitespace() |> Enum.reverse() |> skip_whitespace() |> Enum.reverse()
+
+  defp position({_type, _value, position}), do: position
+  defp position(%{line: line, column: column}), do: {line, column}
+
+  defp error(message, nil), do: {:error, %ParseError{message: message}}
+
+  defp error(message, at) do
+    {line, column} = position(at)
+    {:error, %ParseError{message: message, line: line, column: column}}
+  end
 end

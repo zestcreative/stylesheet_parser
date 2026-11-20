@@ -1,7 +1,18 @@
 defmodule CssParser.ParserTest do
   use ExUnit.Case
   alias CssParser.Syntax.Parser
-  alias CssParser.{Declaration, QualifiedRule, Function, SimpleBlock}
+
+  alias CssParser.{
+    AtRule,
+    ComplexSelector,
+    CompoundSelector,
+    Declaration,
+    Function,
+    QualifiedRule,
+    SimpleBlock,
+    SimpleSelector
+  }
+
   doctest Parser
 
   describe "build_at_rule" do
@@ -17,35 +28,40 @@ defmodule CssParser.ParserTest do
       {:ok, tokens} = CssParser.tokenize(css)
       {:ok, [rule]} = Parser.parse_rules(tokens)
 
-      assert rule == %QualifiedRule{
-        block: %SimpleBlock{
-          terminator: :rcurly,
-          value: [
-            whitespace: "\n  ",
-            ident: "background-color",
-            colon: ":",
-            whitespace: " ",
-            ident: "lime",
-            semicolon: ";",
-            whitespace: "\n"
-          ]
-        },
-        prelude: [
-          class_selector: ".first",
-          descendant_combinator: " ",
-          compound_selector: [type_selector: "span", pseudo_class_selector: ":nth-child(2n+1)"],
-          class_selector: ".second",
-          descendant_combinator: " ",
-          compound_selector: [type_selector: "span", pseudo_class_selector: ":nth-child(2n+1)"],
-          class_selector: ".third",
-          descendant_combinator: " ",
-          compound_selector: [type_selector: "span", pseudo_class_selector: ":nth-of-type(2n+1)"]
-        ],
-        value: [
-          %Declaration{important: false, name: "background-color", value: [ident: "lime"]}
-        ],
-        top_level: false
-      }
+      assert %QualifiedRule{
+               line: 1,
+               column: 1,
+               top_level: false,
+               prelude: [
+                 %ComplexSelector{
+                   value: [
+                     %SimpleSelector{type: :class, value: ".first"},
+                     [
+                       {:descendant_combinator, " "},
+                       %CompoundSelector{
+                         value: [
+                           type: "span",
+                           pseudo_class: %Function{name: "nth-child", value: [anb: "2n+1"]}
+                         ]
+                       }
+                     ]
+                   ]
+                 },
+                 %ComplexSelector{},
+                 %ComplexSelector{}
+               ],
+               block: [
+                 %Declaration{
+                   name: "background-color",
+                   value: [ident: "lime"],
+                   line: 4,
+                   column: 3
+                 }
+               ]
+             } = rule
+
+      assert to_string(rule) ==
+               ".first span:nth-child(2n+1), .second span:nth-child(2n+1), .third span:nth-of-type(2n+1) { background-color: lime; }"
     end
 
     test "returns uranges" do
@@ -60,39 +76,27 @@ defmodule CssParser.ParserTest do
       {:ok, tokens} = CssParser.tokenize(css)
       {:ok, at_rule, _rest} = Parser.build_at_rule(tokens)
 
-      assert at_rule.block == %SimpleBlock{
-        terminator: :rcurly,
-        value: [
-          {:whitespace, "\n  "},
-          {:ident, "font-family"},
-          {:colon, ":"},
-          {:whitespace, " "},
-          {:ident, "BBCBengali"},
-          {:semicolon, ";"},
-          {:whitespace, "\n  "},
-          {:ident, "src"},
-          {:colon, ":"},
-          {:whitespace, " "},
-          {:url, "url(fonts/BBCBengali.woff)"},
-          {:whitespace, " "},
-          %Function{name: "format(", value: [string: "\"woff\""]},
-          {:semicolon, ";"},
-          {:whitespace, "\n  "},
-          {:ident, "unicode-range"},
-          {:colon, ":"},
-          {:whitespace, " "},
-          {:urange, "U+00-FF"},
-          {:comma, ","},
-          {:whitespace, " "},
-          {:urange, "U+980-9FF"},
-          {:semicolon, ";"},
-          {:whitespace, "\n"}
-        ]
-      }
-      assert at_rule.value == []
-      assert at_rule.top_level == false
-      assert at_rule.name == "@font-face"
-      assert at_rule.prelude == [{:whitespace, " "}]
+      assert %AtRule{
+               name: "@font-face",
+               top_level: false,
+               prelude: [],
+               block: [
+                 %Declaration{name: "font-family", value: [ident: "BBCBengali"]},
+                 %Declaration{
+                   name: "src",
+                   value: [
+                     {:url, "url(fonts/BBCBengali.woff)"},
+                     {:whitespace, " "},
+                     %Function{name: "format", value: [string: "\"woff\""]}
+                   ]
+                 },
+                 %Declaration{
+                   name: "unicode-range",
+                   value: [urange: "U+00-FF", comma: ",", whitespace: " ", urange: "U+980-9FF"],
+                   line: 4
+                 }
+               ]
+             } = at_rule
     end
 
     test "returns atrule from @import" do
@@ -104,13 +108,9 @@ defmodule CssParser.ParserTest do
       {:ok, at_rule, _rest} = Parser.build_at_rule(tokens)
 
       refute at_rule.block
-      assert at_rule.value == []
       assert at_rule.top_level == false
       assert at_rule.name == "@import"
-      assert at_rule.prelude == [
-        {:whitespace, " "},
-        {:string, ~s|"https://www.w3.org/StyleSheets/TR/2016/base.css"|}
-      ]
+      assert at_rule.prelude == [{:string, ~s|"https://www.w3.org/StyleSheets/TR/2016/base.css"|}]
     end
 
     test "returns atrule from @media" do
@@ -126,47 +126,42 @@ defmodule CssParser.ParserTest do
       {:ok, at_rule, _rest} = Parser.build_at_rule(tokens)
 
       assert at_rule.name == "@media"
-      assert at_rule.value == []
-      assert at_rule.block == %SimpleBlock{
-        terminator: :rcurly,
-        value: [
-          {:whitespace, "\n  "},
-          {:ident, "body"},
-          {:whitespace, " "},
-          %SimpleBlock{
-            terminator: :rcurly,
-            value: [
-              whitespace: "\n    ",
-              ident: "background-color",
-              colon: ":",
-              whitespace: " ",
-              ident: "lightblue",
-              semicolon: ";",
-              whitespace: "\n  "
-            ]
-          },
-          {:whitespace, "\n"},
-        ]
-      }
-      assert at_rule.prelude == [
-        {:whitespace, " "},
-        {:ident, "only"},
-        {:whitespace, " "},
-        {:ident, "screen"},
-        {:whitespace, " "},
-        {:ident, "and"},
-        {:whitespace, " "},
-        %SimpleBlock{
-          terminator: :rparen,
-          value: [
-            {:ident, "max-width"},
-            {:colon, ":"},
-            {:whitespace, " "},
-            {:dimension, ["600", "px"]},
-          ]
-        },
-        {:whitespace, " "}
-      ]
+
+      assert [
+               %QualifiedRule{
+                 line: 2,
+                 column: 3,
+                 prelude: [%SimpleSelector{type: :type, value: "body"}],
+                 block: [
+                   %Declaration{
+                     name: "background-color",
+                     value: [ident: "lightblue"],
+                     line: 3,
+                     column: 5
+                   }
+                 ]
+               }
+             ] = at_rule.block
+
+      assert [
+               {:ident, "only"},
+               {:whitespace, " "},
+               {:ident, "screen"},
+               {:whitespace, " "},
+               {:ident, "and"},
+               {:whitespace, " "},
+               %SimpleBlock{
+                 terminator: :rparen,
+                 line: 1,
+                 column: 24,
+                 value: [
+                   {:ident, "max-width"},
+                   {:colon, ":"},
+                   {:whitespace, " "},
+                   {:dimension, ["600", "px"]}
+                 ]
+               }
+             ] = at_rule.prelude
     end
   end
 end

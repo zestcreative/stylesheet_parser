@@ -11,13 +11,16 @@ defmodule CssParser.Selector.Parser do
   """
   def selector_list(tokens, result \\ {:cont, []})
   def selector_list(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
+
   def selector_list(tokens, {:cont, acc}) do
     case complex_selector(tokens) do
       {nil, rest} ->
         selector_list(rest, {:halt, acc})
+
       {complex_selector, [{:comma, ","} | rest]} ->
         rest = ignore_whitespace(rest)
         selector_list(rest, {:cont, [complex_selector | acc]})
+
       {complex_selector, rest} ->
         selector_list(rest, {:halt, [complex_selector | acc]})
     end
@@ -28,13 +31,16 @@ defmodule CssParser.Selector.Parser do
   """
   def compound_selector_list(tokens, result \\ {:cont, []})
   def compound_selector_list(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
+
   def compound_selector_list(tokens, {:cont, acc}) do
     case compound_selector(tokens) do
       {nil, rest} ->
         compound_selector_list(rest, {:halt, acc})
+
       {compound_selector, [{:comma, ","} | rest]} ->
         rest = ignore_whitespace(rest)
         compound_selector_list(rest, {:cont, [compound_selector | acc]})
+
       {compound_selector, rest} ->
         compound_selector_list(rest, {:halt, [compound_selector | acc]})
     end
@@ -45,13 +51,16 @@ defmodule CssParser.Selector.Parser do
   """
   def simple_selector_list(tokens, result \\ {:cont, []})
   def simple_selector_list(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
+
   def simple_selector_list(tokens, {:cont, acc}) do
     case simple_selector(tokens) do
       {nil, rest} ->
         simple_selector_list(rest, {:halt, acc})
+
       {simple_selector, [{:comma, ","} | rest]} ->
         rest = ignore_whitespace(rest)
         simple_selector_list(rest, {:cont, [simple_selector | acc]})
+
       {simple_selector, rest} ->
         simple_selector_list(rest, {:halt, [simple_selector | acc]})
     end
@@ -62,13 +71,16 @@ defmodule CssParser.Selector.Parser do
   """
   def relative_selector_list(tokens, result \\ {:cont, []})
   def relative_selector_list(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
+
   def relative_selector_list(tokens, {:cont, acc}) do
     case relative_selector(tokens) do
-      {{:relative, relative_selector}, [{:comma, ","} | rest]} ->
+      {{:relative_selector, relative_selector}, [{:comma, ","} | rest]} ->
         rest = ignore_whitespace(rest)
         relative_selector_list(rest, {:cont, [relative_selector | acc]})
-      {{:relative, relative_selector}, rest} ->
+
+      {{:relative_selector, relative_selector}, rest} ->
         relative_selector_list(rest, {:halt, [relative_selector | acc]})
+
       {nil, rest} ->
         relative_selector_list(rest, {:halt, acc})
     end
@@ -80,6 +92,7 @@ defmodule CssParser.Selector.Parser do
   # <class-selector> = '.' <ident-token>
   def class_selector([{:delim, "."}, {:ident, ident} | tokens]),
     do: {{:class, ".#{ident}"}, tokens}
+
   def class_selector(tokens), do: {nil, tokens}
 
   # <id-selector> = <hash-token>
@@ -90,6 +103,7 @@ defmodule CssParser.Selector.Parser do
     rest = ignore_whitespace(rest)
     {{:column_combinator, "||"}, rest}
   end
+
   def combinator([{:whitespace, _}, {:delim, "|"}, {:delim, "|"} | rest]) do
     rest = ignore_whitespace(rest)
     {{:column_combinator, "||"}, rest}
@@ -119,6 +133,7 @@ defmodule CssParser.Selector.Parser do
     rest = ignore_whitespace(rest)
     {{:subsequent_combinator, "~"}, rest}
   end
+
   def combinator([{:whitespace, _}, {:delim, "~"} | rest]) do
     rest = ignore_whitespace(rest)
     {{:subsequent_combinator, "~"}, rest}
@@ -132,37 +147,48 @@ defmodule CssParser.Selector.Parser do
   # <ns-prefix> = [ <ident-token> | '*' ]? '|'
   def ns_prefix([{:ident, ident}, {:delim, "|"} | tokens]),
     do: {{:ns_prefix, "#{ident}|"}, tokens}
+
   def ns_prefix([{:delim, "*"}, {:delim, "|"} | tokens]),
     do: {{:ns_prefix, "*|"}, tokens}
+
   def ns_prefix([{:delim, "|"} | tokens]),
     do: {{:ns_prefix, "|"}, tokens}
+
   def ns_prefix(tokens), do: {nil, tokens}
 
   # <wq-name> = <ns-prefix>? <ident-token>
   def wq_name([{:ident, ident1}, {:delim, "|"}, {:ident, ident2} | tokens]),
     do: {{:wq_name, ident1 <> "|" <> ident2}, tokens}
+
   def wq_name([{:delim, "*"}, {:delim, "|"}, {:ident, ident} | tokens]),
     do: {{:wq_name, "*|" <> ident}, tokens}
+
   def wq_name([{:delim, "|"}, {:ident, ident} | tokens]),
     do: {{:wq_name, "|" <> ident}, tokens}
+
   def wq_name([{:ident, ident} | tokens]),
     do: {{:wq_name, ident}, tokens}
+
   def wq_name(tokens), do: {nil, tokens}
 
   # <attr-matcher> = [ '~' | '|' | '^' | '$' | '*' ]? '='
   @attr_matchers ~w[~ | ^ $ *]
   def attr_matcher([{:delim, delim}, {:delim, "="} | tokens]) when delim in @attr_matchers,
     do: {{:attr_matcher, delim <> "="}, tokens}
+
   def attr_matcher([{:delim, "="} | tokens]),
     do: {{:attr_matcher, "="}, tokens}
+
   def attr_matcher(tokens), do: {nil, tokens}
 
   @attr_modifiers ~w[i s]
   # i = case-insensitive
   # s = case-sensitive
   def attr_modifier([{:whitespace, _} | tokens]), do: attr_modifier(tokens)
+
   def attr_modifier([{:ident, ident} | tokens]) when ident in @attr_modifiers,
     do: {{:attr_modifier, ident}, tokens}
+
   def attr_modifier(tokens), do: {nil, tokens}
 
   # <type-selector> = <wq-name> | <ns-prefix>? '*'
@@ -170,12 +196,15 @@ defmodule CssParser.Selector.Parser do
     case wq_name(tokens) do
       {{:wq_name, wq_name}, rest} ->
         {{:type, wq_name}, rest}
+
       {nil, rest} ->
         case ns_prefix(rest) do
           {{:ns_prefix, ns_prefix}, [{:delim, "*"} | rest]} ->
             {{:type, ns_prefix <> "*"}, rest}
+
           {nil, [{:delim, "*"} | rest]} ->
             {{:universal, "*"}, rest}
+
           _ ->
             {nil, tokens}
         end
@@ -186,24 +215,30 @@ defmodule CssParser.Selector.Parser do
   #                           ':' <function-token> <any-value> ')'
   def pseudo_class_selector([{:colon, _}, {:ident, ident} | tokens]),
     do: {{:pseudo_class, ":" <> ident}, tokens}
+
   def pseudo_class_selector([{:colon, _}, %Function{} = func | tokens]),
     do: {{:pseudo_class, func}, tokens}
+
   def pseudo_class_selector([{:colon, _} | rest] = tokens) do
     case any_value(rest) do
       {{:any_value, any}, [{:rparen, _} | rest]} ->
-        {{:pseudo_class, ":" <> any}, rest}
+        {{:pseudo_class, ":" <> any <> ")"}, rest}
+
       _ ->
         {nil, tokens}
     end
   end
+
   def pseudo_class_selector(tokens), do: {nil, tokens}
 
   def consume_pseudo_class_selectors(tokens, result \\ {:cont, []})
   def consume_pseudo_class_selectors(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
+
   def consume_pseudo_class_selectors(tokens, {:cont, acc}) do
     case pseudo_class_selector(tokens) do
       {{:pseudo_class, _} = token, rest} ->
         consume_pseudo_class_selectors(rest, {:cont, [token | acc]})
+
       {nil, _rest} ->
         consume_pseudo_class_selectors(tokens, {:halt, acc})
     end
@@ -223,7 +258,9 @@ defmodule CssParser.Selector.Parser do
           {{:attr_matcher, attr_matcher}, [{:string, string} | rest]} ->
             case attr_modifier(rest) do
               {{:attr_modifier, attr_modifier}, [{:rbracket, _} | rest]} ->
-                {{:attribute, "[" <> wq_name <> attr_matcher <> string <> " " <> attr_modifier <> "]"}, rest}
+                {{:attribute,
+                  "[" <> wq_name <> attr_matcher <> string <> " " <> attr_modifier <> "]"}, rest}
+
               {nil, [{:rbracket, _} | rest]} ->
                 {{:attribute, "[" <> wq_name <> attr_matcher <> string <> "]"}, rest}
             end
@@ -239,6 +276,7 @@ defmodule CssParser.Selector.Parser do
         {nil, tokens}
     end
   end
+
   def attribute_selector(tokens), do: {nil, tokens}
 
   # <pseudo-element-selector> = ':' <pseudo-class-selector>
@@ -246,12 +284,13 @@ defmodule CssParser.Selector.Parser do
     case pseudo_class_selector(tokens) do
       {{:pseudo_class, pseudo}, rest} ->
         {{:pseudo_element, ":" <> pseudo}, rest}
+
       _ ->
         {nil, tokens}
     end
   end
-  def pseudo_element_selector(tokens), do: {nil, tokens}
 
+  def pseudo_element_selector(tokens), do: {nil, tokens}
 
   @doc """
   <simple-selector> = <type-selector> | <subclass-selector>
@@ -265,6 +304,7 @@ defmodule CssParser.Selector.Parser do
         case subclass_selector(tokens) do
           {{_, subclass_selector}, rest} ->
             {%SimpleSelector{value: subclass_selector}, rest}
+
           {nil, _rest} ->
             {nil, tokens}
         end
@@ -278,13 +318,17 @@ defmodule CssParser.Selector.Parser do
   def compound_selector(tokens) do
     {prelude_tokens, rest} = compound_prelude(tokens)
     {postlude_tokens, rest} = consume_compound_postlude(rest)
+
     case prelude_tokens ++ postlude_tokens do
       [] ->
         {nil, tokens}
+
       [%{} = compound_token] ->
         {compound_token, rest}
+
       [{type, value}] ->
         {%SimpleSelector{type: type, value: value}, rest}
+
       compound_tokens ->
         {%CompoundSelector{value: compound_tokens}, rest}
     end
@@ -314,10 +358,12 @@ defmodule CssParser.Selector.Parser do
 
   def consume_compound_postlude(tokens, result \\ {:cont, []})
   def consume_compound_postlude(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
+
   def consume_compound_postlude(tokens, {:cont, acc}) do
     case compound_postlude(tokens) do
       {nil, _rest} ->
         consume_compound_postlude(tokens, {:halt, acc})
+
       {postlude_tokens, rest} ->
         consume_compound_postlude(rest, {:cont, [postlude_tokens | acc]})
     end
@@ -333,12 +379,12 @@ defmodule CssParser.Selector.Parser do
 
       {compound_selector, rest} ->
         {postlude, rest} = consume_complex_postlude(rest)
+
         if postlude == [] do
           {compound_selector, rest}
         else
           {%ComplexSelector{value: [compound_selector | postlude]}, rest}
         end
-
     end
   end
 
@@ -350,19 +396,23 @@ defmodule CssParser.Selector.Parser do
         {nil, tokens}
 
       {compound_selector, rest} ->
-        result = if combinator_token,
-          do: [combinator_token, compound_selector],
-          else: [compound_selector]
+        result =
+          if combinator_token,
+            do: [combinator_token, compound_selector],
+            else: [compound_selector]
+
         {result, rest}
     end
   end
 
   def consume_complex_postlude(tokens, result \\ {:cont, []})
   def consume_complex_postlude(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
+
   def consume_complex_postlude(tokens, {:cont, acc}) do
     case complex_postlude(tokens) do
       {nil, _rest} ->
         consume_complex_postlude(tokens, {:halt, acc})
+
       {complex_postlude, rest} ->
         consume_complex_postlude(rest, {:cont, [complex_postlude | acc]})
     end
@@ -373,16 +423,18 @@ defmodule CssParser.Selector.Parser do
   """
   def relative_selector(tokens) do
     {combinator, rest} = combinator(tokens)
+
     case complex_selector(rest) do
       {nil, rest} ->
         {nil, rest}
 
       {complex_selector, rest} ->
-        result = if combinator,
-          do: [combinator | complex_selector],
-        else: complex_selector
-          {{:relative_selector, result}, rest}
+        result =
+          if combinator,
+            do: [combinator | complex_selector],
+            else: complex_selector
 
+        {{:relative_selector, result}, rest}
     end
   end
 
@@ -394,12 +446,16 @@ defmodule CssParser.Selector.Parser do
     cond do
       match?({{:id, _}, _}, id_selector(tokens)) ->
         id_selector(tokens)
+
       match?({{:class, _}, _}, class_selector(tokens)) ->
         class_selector(tokens)
+
       match?({{:attribute, _}, _}, attribute_selector(tokens)) ->
         attribute_selector(tokens)
+
       match?({{:pseudo_class, _}, _}, pseudo_class_selector(tokens)) ->
         pseudo_class_selector(tokens)
+
       true ->
         {nil, tokens}
     end
@@ -407,10 +463,12 @@ defmodule CssParser.Selector.Parser do
 
   def consume_subclass_selectors(tokens, result \\ {:cont, []})
   def consume_subclass_selectors(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
+
   def consume_subclass_selectors(tokens, {:cont, acc}) do
     case subclass_selector(tokens) do
       {{_, _} = token, rest} ->
         consume_subclass_selectors(rest, {:cont, [token | acc]})
+
       {nil, _rest} ->
         consume_subclass_selectors(tokens, {:halt, acc})
     end
@@ -423,6 +481,7 @@ defmodule CssParser.Selector.Parser do
   a value of `"!"`. It represents the entirety of what a valid declaration can have as its value.
   """
   def declaration_value([%Function{} = token | rest]), do: {{:declaration_value, token}, rest}
+
   def declaration_value(tokens) do
     {declaration_tokens, rest} =
       Enum.split_while(tokens, fn
@@ -444,6 +503,7 @@ defmodule CssParser.Selector.Parser do
   entirety of what valid CSS can be in any context.
   """
   def any_value([%Function{} = token | rest]), do: {{:any_value, token}, rest}
+
   def any_value(tokens) do
     {any_tokens, rest} =
       Enum.split_while(tokens, fn

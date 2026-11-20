@@ -7,11 +7,12 @@ defmodule CssParser.Syntax.Tokenizer do
 
   import NimbleParsec
 
-  newline = choice([
-    string("\r\n") |> replace("\n"),
-    string("\f") |> replace("\n"),
-    string("\n")
-  ])
+  newline =
+    choice([
+      string("\r\n") |> replace("\n"),
+      string("\f") |> replace("\n"),
+      string("\n")
+    ])
 
   tab = string("\t")
   space = string(" ")
@@ -22,7 +23,7 @@ defmodule CssParser.Syntax.Tokenizer do
     |> string("*/")
     |> reduce({List, :to_string, []})
 
-  defparsec :comment_token, comment_token
+  defparsec(:comment_token, comment_token)
 
   hex_digit = utf8_string([?a..?f, ?A..?F, ?0..?9], 1)
 
@@ -32,7 +33,7 @@ defmodule CssParser.Syntax.Tokenizer do
     times(whitespace, min: 1)
     |> reduce({List, :to_string, []})
 
-  defparsec :whitespace_token, whitespace_token
+  defparsec(:whitespace_token, whitespace_token)
 
   maybe_whitespace = repeat(whitespace_token)
 
@@ -74,21 +75,21 @@ defmodule CssParser.Syntax.Tokenizer do
     )
     |> reduce({List, :to_string, []})
 
-  defparsec :ident_token, ident_token
+  defparsec(:ident_token, ident_token)
 
   function_token =
     ident_token
     |> concat(string("("))
     |> reduce({List, :to_string, []})
 
-  defparsec :function_token, function_token
+  defparsec(:function_token, function_token)
 
   at_keyword_token =
     string("@")
     |> concat(ident_token)
     |> reduce({List, :to_string, []})
 
-  defparsec :at_keyword_token, at_keyword_token
+  defparsec(:at_keyword_token, at_keyword_token)
 
   hash_token =
     string("#")
@@ -106,7 +107,7 @@ defmodule CssParser.Syntax.Tokenizer do
     )
     |> reduce({List, :to_string, []})
 
-  defparsec :hash_token, hash_token
+  defparsec(:hash_token, hash_token)
 
   string_token =
     choice([
@@ -132,18 +133,14 @@ defmodule CssParser.Syntax.Tokenizer do
       |> reduce({List, :to_string, []})
     ])
 
-  defparsec :string_token, string_token
+  defparsec(:string_token, string_token)
 
   scientific_notation =
     choice([
       string("e"),
       string("E")
     ])
-    |> choice([
-      empty(),
-      string("+"),
-      string("-")
-    ])
+    |> optional(choice([string("+"), string("-")]))
     |> times(ascii_char([?0..?9]), min: 1)
 
   url_token =
@@ -152,24 +149,27 @@ defmodule CssParser.Syntax.Tokenizer do
     |> repeat(
       choice([
         escape,
-        utf8_string([
-          {:not, ?"},
-          {:not, ?'},
-          {:not, ?(},
-          {:not, ?)},
-          {:not, ?\\},
-          {:not, 0..8},
-          {:not, 11},
-          {:not, 14..31},
-          {:not, 127},
-        ], 1)
+        utf8_string(
+          [
+            {:not, ?"},
+            {:not, ?'},
+            {:not, ?(},
+            {:not, ?)},
+            {:not, ?\\},
+            {:not, 0..8},
+            {:not, 11},
+            {:not, 14..31},
+            {:not, 127}
+          ],
+          1
+        )
       ])
     )
     |> concat(maybe_whitespace |> ignore)
     |> string(")")
     |> reduce({List, :to_string, []})
 
-  defparsec :url_token, url_token
+  defparsec(:url_token, url_token)
 
   bad_url_token =
     string("url(")
@@ -177,24 +177,27 @@ defmodule CssParser.Syntax.Tokenizer do
     |> repeat(
       choice([
         lookahead_not(escape),
-        utf8_string([
-          ?",
-          ?',
-          ?(,
-          ?),
-          ?\\,
-          0..8,
-          11,
-          14..31,
-          127,
-        ], 1)
+        utf8_string(
+          [
+            ?",
+            ?',
+            ?(,
+            ?),
+            ?\\,
+            0..8,
+            11,
+            14..31,
+            127
+          ],
+          1
+        )
       ])
     )
     |> concat(maybe_whitespace |> ignore)
     |> string(")")
     |> reduce({List, :to_string, []})
 
-  defparsec :bad_url_token, bad_url_token
+  defparsec(:bad_url_token, bad_url_token)
 
   integer_token =
     choice([
@@ -225,7 +228,7 @@ defmodule CssParser.Syntax.Tokenizer do
     |> reduce({List, :to_string, []})
 
   dimension_token = concat(number_token, ident_token)
-  defparsec :dimension_token, dimension_token
+  defparsec(:dimension_token, dimension_token)
 
   ndimension_token = integer_token |> utf8_string([?n, ?N], 1)
   ndashdimension_token = ndimension_token |> string("-")
@@ -234,34 +237,47 @@ defmodule CssParser.Syntax.Tokenizer do
   a_n_b_token =
     choice([
       utf8_string([?o, ?O], 1) |> utf8_string([?d, ?D], 1) |> utf8_string([?d, ?D], 1),
-      utf8_string([?e, ?E], 1) |> utf8_string([?v, ?V], 1) |> utf8_string([?e, ?E], 1) |> utf8_string([?n, ?N], 1),
+      utf8_string([?e, ?E], 1)
+      |> utf8_string([?v, ?V], 1)
+      |> utf8_string([?e, ?E], 1)
+      |> utf8_string([?n, ?N], 1),
       concat(ndimension_token, signed_integer_token),
       concat(repeat(string("+")) |> utf8_string([?n, ?N], 1), signed_integer_token),
       concat(string("-") |> utf8_string([?n, ?N], 1), signed_integer_token),
       concat(ndashdimension_token, signless_integer_token),
-      concat(repeat(string("+")) |> utf8_string([?n, ?N], 1) |> string("-"), signless_integer_token),
+      concat(
+        repeat(string("+")) |> utf8_string([?n, ?N], 1) |> string("-"),
+        signless_integer_token
+      ),
       concat(string("-") |> utf8_string([?n, ?N], 1) |> string("-"), signless_integer_token),
       concat(ndimension_token |> choice([string("-"), string("+")]), signless_integer_token),
-      concat(repeat(string("+")) |> utf8_string([?n, ?N], 1) |> choice([string("-"), string("+")]), signless_integer_token),
-      concat(string("-") |> utf8_string([?n, ?N], 1) |> choice([string("-"), string("+")]), signless_integer_token),
+      concat(
+        repeat(string("+")) |> utf8_string([?n, ?N], 1) |> choice([string("-"), string("+")]),
+        signless_integer_token
+      ),
+      concat(
+        string("-") |> utf8_string([?n, ?N], 1) |> choice([string("-"), string("+")]),
+        signless_integer_token
+      ),
       # integer_token, # this is catching too much
       ndimension_token,
-      times(string("+"), min: 1) |> utf8_string([?n, ?N], 1), # made it match at least 1 to catch less
+      # made it match at least 1 to catch less
+      times(string("+"), min: 1) |> utf8_string([?n, ?N], 1),
       string("-") |> utf8_string([?n, ?N], 1),
       ndashdigit_dimension_token
     ])
     |> reduce({List, :to_string, []})
 
-  defparsec :number_token, number_token
+  defparsec(:number_token, number_token)
 
   percentage_token = concat(number_token, string("%") |> ignore())
-  defparsec :percentage_token, percentage_token
+  defparsec(:percentage_token, percentage_token)
 
   cdo_token = string("<!--")
-  defparsec :cdo_token, cdo_token
+  defparsec(:cdo_token, cdo_token)
 
   cdc_token = string("-->")
-  defparsec :cdc_token, cdc_token
+  defparsec(:cdc_token, cdc_token)
 
   numeric_token =
     choice([
@@ -269,7 +285,8 @@ defmodule CssParser.Syntax.Tokenizer do
       percentage_token,
       number_token
     ])
-  defparsec :numeric_token, numeric_token
+
+  defparsec(:numeric_token, numeric_token)
 
   ident_like_token =
     choice([
@@ -277,7 +294,8 @@ defmodule CssParser.Syntax.Tokenizer do
       function_token,
       url_token
     ])
-  defparsec :ident_like_token, ident_like_token
+
+  defparsec(:ident_like_token, ident_like_token)
 
   urange_token =
     choice([
@@ -289,7 +307,8 @@ defmodule CssParser.Syntax.Tokenizer do
     |> string("-")
     |> times(hex_digit, min: 1, max: 6)
     |> reduce({List, :to_string, []})
-  defparsec :urange, urange_token
+
+  defparsec(:urange, urange_token)
 
   lparen_token = string("(")
   rparen_token = string(")")
@@ -301,11 +320,13 @@ defmodule CssParser.Syntax.Tokenizer do
   colon_token = string(":")
   semicolon_token = string(";")
 
-  defparsec :consume,
-    comment_token
-    |> ignore()
-    |> optional()
-    |> choice([
+  @doc false
+  # Each token as `{type, value, {line, column}}`, where it starts; columns count bytes from 1.
+  def at(rest, [{type, value}], context, {line, line_offset}, offset),
+    do: {rest, [{type, value, {line, offset - line_offset + 1}}], context}
+
+  token =
+    choice([
       whitespace_token |> unwrap_and_tag(:whitespace),
       urange_token |> unwrap_and_tag(:urange),
       hash_token |> unwrap_and_tag(:hash),
@@ -332,5 +353,9 @@ defmodule CssParser.Syntax.Tokenizer do
       string_token |> unwrap_and_tag(:string),
       utf8_string([], 1) |> unwrap_and_tag(:delim)
     ])
-    |> repeat()
+
+  defparsec(
+    :consume,
+    repeat(choice([ignore(comment_token), pre_traverse(token, {__MODULE__, :at, []})]))
+  )
 end

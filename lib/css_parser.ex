@@ -74,9 +74,22 @@ defmodule CssParser do
     end
   end
 
-  @doc false
+  @doc """
+  The tokens of `css`, each `{type, value, {line, column}}` where it starts (columns count bytes
+  from 1). Comments are dropped.
+  """
   def tokenize(css) do
-    {:ok, tokens, _, _, _, _} = Tokenizer.consume(css)
-    {:ok, tokens}
+    case Tokenizer.consume(css) do
+      {:ok, tokens, "", _, _, _} ->
+        {:ok, tokens}
+
+      {:ok, _tokens, _rest, _, {line, line_offset}, offset} ->
+        {:error,
+         %Parser.ParseError{
+           message: "unexpected input",
+           line: line,
+           column: offset - line_offset + 1
+         }}
+    end
   end
 end

@@ -1,21 +1,31 @@
 # CssParser
 
-**TODO: Add description**
-
-## Installation
-
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `css_parser` to your list of dependencies in `mix.exs`:
+A [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/) tokenizer and parser in Elixir, with
+a [Selectors Level 4](https://www.w3.org/TR/selectors-4/) selector parser.
 
 ```elixir
-def deps do
-  [
-    {:css_parser, "~> 0.1.0"}
-  ]
-end
+{:ok, stylesheet} =
+  CssParser.parse_stylesheet("""
+  :root { --space-s: 6px; }
+  @media (prefers-color-scheme: dark) { :root { --text: #ececf0; } }
+  .card > .title { padding: var(--space-s) 12px; }
+  """)
+
+[root, media, card] = stylesheet.rules
+%CssParser.QualifiedRule{prelude: [%CssParser.SimpleSelector{type: :pseudo_class, value: ":root"}]} = root
+%CssParser.AtRule{name: "@media", block: [%CssParser.QualifiedRule{}]} = media
+
+%CssParser.QualifiedRule{
+  line: 3,
+  block: [%CssParser.Declaration{name: "padding", value: [%CssParser.Function{name: "var"}, {:whitespace, " "}, {:dimension, ["12", "px"]}]}]
+} = card
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/css_parser](https://hexdocs.pm/css_parser).
-
+- Tokens are `{type, value, {line, column}}`. Rules, declarations, functions and simple blocks
+  carry the `line` and `column` where they start; the values inside them are `{type, value}`.
+- A qualified rule's `prelude` is its selector list, and its `block` its declarations. An at-rule
+  whose block holds rules (`@media`, `@supports`, …) has its rules as its `block`; others have
+  their declarations.
+- Malformed input is `{:error, %CssParser.Syntax.Parser.ParseError{message, line, column}}`.
+- `to_string/1` serializes what it parsed. Comments are dropped and whitespace normalized, so the
+  output parses to the same rules again.
