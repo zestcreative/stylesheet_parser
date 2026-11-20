@@ -1,7 +1,8 @@
 defmodule CssParser.Syntax.Parser do
   @moduledoc """
   The parsing algorithms of [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/#parsing),
-  over the tokenizer's tokens, `{type, value, {line, column}}`.
+  over the tokenizer's tokens, `{type, value, metadata}` with `[line: l, column: c]`, like
+  Elixir AST.
 
   Rules, declarations, functions and simple blocks carry the `line` and `column` where they start.
   The component values inside them (a declaration's value, an at-rule's prelude, a block's or a
@@ -215,7 +216,9 @@ defmodule CssParser.Syntax.Parser do
   - anything else - Reconsume the current input token. Consume a component value. Append the
     returned value to the at-rule’s prelude.
   """
-  def build_at_rule([{:at_keyword, name, {line, column}} | tokens], opts \\ []) do
+  def build_at_rule([{:at_keyword, name, _} = token | tokens], opts \\ []) do
+    {line, column} = position(token)
+
     at_rule = %AtRule{
       name: name,
       line: line,
@@ -287,7 +290,7 @@ defmodule CssParser.Syntax.Parser do
   end
 
   defp consume_qualified_rule([], rule, _prelude),
-    do: error("expected { after the selector", {nil, nil, {rule.line, rule.column}})
+    do: error("expected { after the selector", {nil, nil, [line: rule.line, column: rule.column]})
 
   defp consume_qualified_rule([block | rest], rule, prelude)
        when is_struct(block, SimpleBlock) and block.terminator == :rcurly,
@@ -334,8 +337,9 @@ defmodule CssParser.Syntax.Parser do
 
   An unclosed block is an error here, at the block's opening token.
   """
-  def build_simple_block([{opening, _, {line, column}} | tokens])
+  def build_simple_block([{opening, _, _} = token | tokens])
       when opening in [:lcurly, :lbracket, :lparen] do
+    {line, column} = position(token)
     terminator = %{lcurly: :rcurly, lbracket: :rbracket, lparen: :rparen}[opening]
 
     consume_simple_block(
@@ -346,7 +350,11 @@ defmodule CssParser.Syntax.Parser do
   end
 
   defp consume_simple_block([], block, _value),
-    do: error("unclosed #{opening(block.terminator)}", {nil, nil, {block.line, block.column}})
+    do:
+      error(
+        "unclosed #{opening(block.terminator)}",
+        {nil, nil, [line: block.line, column: block.column]}
+      )
 
   defp consume_simple_block(
          [{terminator, _, _} | rest],
@@ -378,7 +386,9 @@ defmodule CssParser.Syntax.Parser do
 
   An unclosed function is an error here, at its name.
   """
-  def build_function([{:function, name, {line, column}} | tokens]) do
+  def build_function([{:function, name, _} = token | tokens]) do
+    {line, column} = position(token)
+
     consume_function(
       tokens,
       %Function{name: String.trim_trailing(name, "("), line: line, column: column},
@@ -387,7 +397,11 @@ defmodule CssParser.Syntax.Parser do
   end
 
   defp consume_function([], function, _value),
-    do: error("unclosed #{function.name}(", {nil, nil, {function.line, function.column}})
+    do:
+      error(
+        "unclosed #{function.name}(",
+        {nil, nil, [line: function.line, column: function.column]}
+      )
 
   defp consume_function([{:rparen, _, _} | rest], function, value),
     do: {:ok, %{function | value: Enum.reverse(value)}, rest}
@@ -416,7 +430,9 @@ defmodule CssParser.Syntax.Parser do
   6. While the last token in the declaration’s value is a `<whitespace-token>`, remove that token.
   7. Return the declaration.
   """
-  def build_declaration([{:ident, name, {line, column}} = ident | components]) do
+  def build_declaration([{:ident, name, _} = ident | components]) do
+    {line, column} = position(ident)
+
     case skip_whitespace(components) do
       [{:colon, _, _} | value] ->
         {value, important} = value |> trim_whitespace() |> important()
@@ -478,7 +494,7 @@ defmodule CssParser.Syntax.Parser do
   end
 
   # A component value without positions, as structs hold their values; structs keep their own.
-  defp plain({type, value, _position}), do: {type, value}
+  defp plain({type, value, _metadata}), do: {type, value}
   defp plain(%SimpleBlock{value: value} = block), do: %{block | value: Enum.map(value, &plain/1)}
 
   defp plain(%Function{value: value} = function),
@@ -497,7 +513,7 @@ defmodule CssParser.Syntax.Parser do
   defp trim_whitespace(components),
     do: components |> skip_whitespace() |> Enum.reverse() |> skip_whitespace() |> Enum.reverse()
 
-  defp position({_type, _value, position}), do: position
+  defp position({_type, _value, metadata}), do: {metadata[:line], metadata[:column]}
   defp position(%{line: line, column: column}), do: {line, column}
 
   defp error(message, nil), do: {:error, %ParseError{message: message}}

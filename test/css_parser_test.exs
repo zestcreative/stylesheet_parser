@@ -306,18 +306,18 @@ defmodule CssParserTest do
       assert {:ok, tokens} = CssParser.tokenize("a {\n  /* note\n */ b: 1e+5;\n}")
 
       assert [
-               {:ident, "a", {1, 1}},
-               {:whitespace, " ", {1, 2}},
-               {:lcurly, "{", {1, 3}},
-               {:whitespace, "\n  ", {1, 4}},
-               {:whitespace, " ", {3, 4}},
-               {:ident, "b", {3, 5}},
-               {:colon, ":", {3, 6}},
-               {:whitespace, " ", {3, 7}},
-               {:number, "1e+5", {3, 8}},
-               {:semicolon, ";", {3, 12}},
-               {:whitespace, "\n", {3, 13}},
-               {:rcurly, "}", {4, 1}}
+               {:ident, "a", [line: 1, column: 1]},
+               {:whitespace, " ", [line: 1, column: 2]},
+               {:lcurly, "{", [line: 1, column: 3]},
+               {:whitespace, "\n  ", [line: 1, column: 4]},
+               {:whitespace, " ", [line: 3, column: 4]},
+               {:ident, "b", [line: 3, column: 5]},
+               {:colon, ":", [line: 3, column: 6]},
+               {:whitespace, " ", [line: 3, column: 7]},
+               {:number, "1e+5", [line: 3, column: 8]},
+               {:semicolon, ";", [line: 3, column: 12]},
+               {:whitespace, "\n", [line: 3, column: 13]},
+               {:rcurly, "}", [line: 4, column: 1]}
              ] = tokens
     end
   end
@@ -436,5 +436,5 @@ defmodule CssParserTest do
     end
   end
 
-  defp plain(tokens), do: Enum.map(tokens, fn {type, value, _position} -> {type, value} end)
+  defp plain(tokens), do: Enum.map(tokens, fn {type, value, _metadata} -> {type, value} end)
 end

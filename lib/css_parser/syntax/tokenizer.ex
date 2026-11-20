@@ -321,9 +321,10 @@ defmodule CssParser.Syntax.Tokenizer do
   semicolon_token = string(";")
 
   @doc false
-  # Each token as `{type, value, {line, column}}`, where it starts; columns count bytes from 1.
+  # Each token as `{type, value, metadata}`, like Elixir AST: `[line: l, column: c]` where it
+  # starts, columns counting bytes from 1.
   def at(rest, [{type, value}], context, {line, line_offset}, offset),
-    do: {rest, [{type, value, {line, offset - line_offset + 1}}], context}
+    do: {rest, [{type, value, [line: line, column: offset - line_offset + 1]}], context}
 
   token =
     choice([

@@ -75,8 +75,8 @@ defmodule CssParser do
   end
 
   @doc """
-  The tokens of `css`, each `{type, value, {line, column}}` where it starts (columns count bytes
-  from 1). Comments are dropped.
+  The tokens of `css`, each `{type, value, metadata}` like Elixir AST, its metadata `[line: l, column: c]`
+  where it starts (columns count bytes from 1). Comments are dropped.
   """
   def tokenize(css) do
     case Tokenizer.consume(css) do

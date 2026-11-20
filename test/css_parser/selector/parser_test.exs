@@ -118,6 +118,6 @@ defmodule CssParser.Selector.ParserTest do
 
   defp tokenize(css) do
     {:ok, tokens} = CssParser.tokenize(css)
-    Enum.map(tokens, fn {type, value, _position} -> {type, value} end)
+    Enum.map(tokens, fn {type, value, _metadata} -> {type, value} end)
   end
 end

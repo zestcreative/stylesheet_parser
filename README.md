@@ -21,7 +21,7 @@ a [Selectors Level 4](https://www.w3.org/TR/selectors-4/) selector parser.
 } = card
 ```
 
-- Tokens are `{type, value, {line, column}}`. Rules, declarations, functions and simple blocks
+- Tokens are `{type, value, metadata}`, like Elixir AST, with `[line: l, column: c]` metadata. Rules, declarations, functions and simple blocks
   carry the `line` and `column` where they start; the values inside them are `{type, value}`.
 - A qualified rule's `prelude` is its selector list, and its `block` its declarations. An at-rule
   whose block holds rules (`@media`, `@supports`, …) has its rules as its `block`; others have
