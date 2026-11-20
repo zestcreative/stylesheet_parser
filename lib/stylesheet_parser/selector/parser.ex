@@ -1,37 +1,56 @@
-defmodule CssParser.Selector.Parser do
+defmodule StylesheetParser.Selector.Parser do
   @moduledoc """
   [Selectors Level 4](https://www.w3.org/TR/selectors-4/), over component values, as
-  `CssParser.parse_component_values/1` returns them: an attribute selector is a `[]`
-  `CssParser.SimpleBlock`, and a functional pseudo-class or pseudo-element is a
-  `CssParser.Function`, its arguments its component values, except for the pseudo-classes whose
-  arguments parse here, a `CssParser.PseudoClass`: `:is()`, `:where()`, `:not()` and the
+  `StylesheetParser.parse_component_values/1` returns them: an attribute selector is a `[]`
+  `StylesheetParser.SimpleBlock`, and a functional pseudo-class or pseudo-element is a
+  `StylesheetParser.Function`, its arguments its component values, except for the pseudo-classes whose
+  arguments parse here, a `StylesheetParser.PseudoClass`: `:is()`, `:where()`, `:not()` and the
   `:nth-*()` ones. `&` is the nesting selector of
   [CSS Nesting](https://www.w3.org/TR/css-nesting-1/).
 
-  Each parser returns what it parsed, or nil, and the component values after it.
+  Each parser returns what it parsed, or nil, and the component values after it. A selector list
+  parses whole when nothing is after it:
+
+      iex> {:ok, values} = StylesheetParser.parse_component_values("nav > a:hover, .button")
+      iex> {selectors, []} = StylesheetParser.Selector.Parser.selector_list(values)
+      iex> Enum.map(selectors, &to_string/1)
+      ["nav > a:hover", ".button"]
+
+      iex> {:ok, values} = StylesheetParser.parse_component_values("a, #1st")
+      iex> {[%StylesheetParser.SimpleSelector{value: "a"}], rest} =
+      ...>   StylesheetParser.Selector.Parser.selector_list(values)
+      iex> rest
+      [comma: ",", whitespace: " ", hash: "#1st"]
+
+  A nested rule's selectors may be relative, as `> a`:
+
+      iex> {:ok, values} = StylesheetParser.parse_component_values("> a, + b")
+      iex> {selectors, []} = StylesheetParser.Selector.Parser.relative_selector_list(values)
+      iex> Enum.map(selectors, &to_string/1)
+      ["> a", "+ b"]
   """
 
-  alias CssParser.{Function, PseudoClass, SimpleBlock, SimpleSelector}
-  alias CssParser.{CompoundSelector, ComplexSelector}
+  alias StylesheetParser.{Function, PseudoClass, SimpleBlock, SimpleSelector}
+  alias StylesheetParser.{CompoundSelector, ComplexSelector}
 
   @doc """
-  <selector-list> = <complex-selector-list>
-  <complex-selector-list> = <complex-selector>#
+      <selector-list> = <complex-selector-list>
+      <complex-selector-list> = <complex-selector>#
   """
   def selector_list(tokens), do: comma_list(tokens, &complex_selector/1)
 
   @doc """
-  <compound-selector-list> = <compound-selector>#
+      <compound-selector-list> = <compound-selector>#
   """
   def compound_selector_list(tokens), do: comma_list(tokens, &compound_selector/1)
 
   @doc """
-  <simple-selector-list> = <simple-selector>#
+      <simple-selector-list> = <simple-selector>#
   """
   def simple_selector_list(tokens), do: comma_list(tokens, &simple_selector/1)
 
   @doc """
-  <relative-selector-list> = <relative-selector>#
+      <relative-selector-list> = <relative-selector>#
   """
   def relative_selector_list(tokens), do: comma_list(tokens, &relative_selector/1)
 
@@ -57,6 +76,7 @@ defmodule CssParser.Selector.Parser do
 
   defp after_comma(_tokens, rest, _parse), do: {[], rest}
 
+  @doc false
   def ignore_whitespace([{:whitespace, _} | rest]), do: ignore_whitespace(rest)
   def ignore_whitespace(tokens), do: tokens
 
@@ -159,22 +179,19 @@ defmodule CssParser.Selector.Parser do
   def attr_modifier(tokens), do: {nil, tokens}
 
   # <type-selector> = <wq-name> | <ns-prefix>? '*'
+  # A prefix and `*` first, as `html|*` would otherwise be the `html` alone.
   def type_selector(tokens) do
+    case ns_prefix(tokens) do
+      {{:ns_prefix, ns_prefix}, [{:delim, "*"} | rest]} -> {{:type, ns_prefix <> "*"}, rest}
+      _ -> wq_name_or_universal(tokens)
+    end
+  end
+
+  defp wq_name_or_universal(tokens) do
     case wq_name(tokens) do
-      {{:wq_name, wq_name}, rest} ->
-        {{:type, wq_name}, rest}
-
-      {nil, rest} ->
-        case ns_prefix(rest) do
-          {{:ns_prefix, ns_prefix}, [{:delim, "*"} | rest]} ->
-            {{:type, ns_prefix <> "*"}, rest}
-
-          {nil, [{:delim, "*"} | rest]} ->
-            {{:universal, "*"}, rest}
-
-          _ ->
-            {nil, tokens}
-        end
+      {{:wq_name, wq_name}, rest} -> {{:type, wq_name}, rest}
+      {nil, [{:delim, "*"} | rest]} -> {{:universal, "*"}, rest}
+      {nil, _tokens} -> {nil, tokens}
     end
   end
 
@@ -369,6 +386,7 @@ defmodule CssParser.Selector.Parser do
   defp signless_integer(<<digit, _::binary>> = text) when digit in ?0..?9, do: integer(text)
   defp signless_integer(_text), do: :error
 
+  @doc false
   def consume_pseudo_class_selectors(tokens, result \\ {:cont, []})
   def consume_pseudo_class_selectors(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
 
@@ -383,8 +401,8 @@ defmodule CssParser.Selector.Parser do
   end
 
   @doc """
-  <attribute-selector> = '[' <wq-name> ']' |
-                '[' <wq-name> <attr-matcher> [ <string-token> | <ident-token> ] <attr-modifier>? ']'
+      <attribute-selector> = '[' <wq-name> ']' |
+                    '[' <wq-name> <attr-matcher> [ <string-token> | <ident-token> ] <attr-modifier>? ']'
   """
   def attribute_selector([%SimpleBlock{terminator: :rbracket, value: value} | tokens] = all) do
     case attribute(value) do
@@ -430,7 +448,7 @@ defmodule CssParser.Selector.Parser do
   def pseudo_element_selector(tokens), do: {nil, tokens}
 
   @doc """
-  <simple-selector> = <type-selector> | <subclass-selector>
+      <simple-selector> = <type-selector> | <subclass-selector>
   """
   def simple_selector(tokens) do
     case type_selector(tokens) do
@@ -449,8 +467,8 @@ defmodule CssParser.Selector.Parser do
   end
 
   @doc """
-  <compound-selector> = [ <type-selector>? <subclass-selector>*
-                          [ <pseudo-element-selector> <pseudo-class-selector>* ]* ]!
+      <compound-selector> = [ <type-selector>? <subclass-selector>*
+                              [ <pseudo-element-selector> <pseudo-class-selector>* ]* ]!
   """
   def compound_selector(tokens) do
     {prelude_tokens, rest} = compound_prelude(tokens)
@@ -493,6 +511,7 @@ defmodule CssParser.Selector.Parser do
     end
   end
 
+  @doc false
   def consume_compound_postlude(tokens, result \\ {:cont, []})
   def consume_compound_postlude(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
 
@@ -507,7 +526,7 @@ defmodule CssParser.Selector.Parser do
   end
 
   @doc """
-  <complex-selector> = <compound-selector> [ <combinator>? <compound-selector> ]*
+      <complex-selector> = <compound-selector> [ <combinator>? <compound-selector> ]*
   """
   def complex_selector(tokens) do
     case compound_selector(tokens) do
@@ -527,6 +546,7 @@ defmodule CssParser.Selector.Parser do
 
   # Compound selectors next to each other always have a combinator between them, whitespace at
   # least, as `a::before.b` doesn't.
+  @doc false
   def complex_postlude(tokens) do
     with {{_, _} = combinator, rest} <- combinator(tokens),
          {%{} = compound_selector, rest} <- compound_selector(rest) do
@@ -536,6 +556,7 @@ defmodule CssParser.Selector.Parser do
     end
   end
 
+  @doc false
   def consume_complex_postlude(tokens, result \\ {:cont, []})
   def consume_complex_postlude(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
 
@@ -550,7 +571,7 @@ defmodule CssParser.Selector.Parser do
   end
 
   @doc """
-  <relative-selector> = <combinator>? <complex-selector>
+      <relative-selector> = <combinator>? <complex-selector>
 
   A complex selector, its first compound selector after its combinator, as `> a` is
   `%ComplexSelector{value: [[{:child_combinator, ">"}, a]]}`.
@@ -574,8 +595,8 @@ defmodule CssParser.Selector.Parser do
     do: {%ComplexSelector{value: [[combinator, compound_selector]]}, rest}
 
   @doc """
-  <subclass-selector> = <id-selector> | <class-selector> |
-                        <attribute-selector> | <pseudo-class-selector>
+      <subclass-selector> = <id-selector> | <class-selector> |
+                            <attribute-selector> | <pseudo-class-selector>
 
   and the `&` nesting selector.
   """
@@ -598,6 +619,7 @@ defmodule CssParser.Selector.Parser do
     )
   end
 
+  @doc false
   def consume_subclass_selectors(tokens, result \\ {:cont, []})
   def consume_subclass_selectors(rest, {:halt, acc}), do: {Enum.reverse(acc), rest}
 
@@ -614,7 +636,7 @@ defmodule CssParser.Selector.Parser do
   @doc """
   The `<declaration-value>` production matches any sequence of one or more tokens, so long as the
   sequence does not contain `<bad-string-token>`, `<bad-url-token>`, unmatched `<)-token>`,
-  `<]-token>`, or <}-token>, or top-level `<semicolon-token>` tokens or `<delim-token>` tokens with
+  `<]-token>`, or `<}-token>`, or top-level `<semicolon-token>` tokens or `<delim-token>` tokens with
   a value of `"!"`. It represents the entirety of what a valid declaration can have as its value.
   """
   def declaration_value([%Function{} = token | rest]), do: {{:declaration_value, token}, rest}
@@ -634,6 +656,7 @@ defmodule CssParser.Selector.Parser do
     {{:declaration_value, declaration_tokens |> Enum.map(&value/1) |> Enum.join("")}, rest}
   end
 
+  @doc false
   def value(%Function{} = function), do: function
   def value({_, x}), do: x
 end

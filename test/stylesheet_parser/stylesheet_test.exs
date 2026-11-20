@@ -1,8 +1,8 @@
-defmodule CssParser.ParserTest do
+defmodule StylesheetParser.ParserTest do
   use ExUnit.Case
-  alias CssParser.Syntax.Parser
+  alias StylesheetParser.Syntax.Parser
 
-  alias CssParser.{
+  alias StylesheetParser.{
     AtRule,
     ComplexSelector,
     CompoundSelector,
@@ -26,7 +26,7 @@ defmodule CssParser.ParserTest do
       }
       """
 
-      {:ok, tokens} = CssParser.tokenize(css)
+      {:ok, tokens} = StylesheetParser.tokenize(css)
       {:ok, [rule], []} = Parser.parse_rules(tokens)
 
       assert %QualifiedRule{
@@ -74,7 +74,7 @@ defmodule CssParser.ParserTest do
       }
       """
 
-      {:ok, tokens} = CssParser.tokenize(css)
+      {:ok, tokens} = StylesheetParser.tokenize(css)
       {:ok, at_rule, _rest} = Parser.build_at_rule(tokens)
 
       assert %AtRule{
@@ -105,7 +105,7 @@ defmodule CssParser.ParserTest do
       @import "https://www.w3.org/StyleSheets/TR/2016/base.css";
       """
 
-      {:ok, tokens} = CssParser.tokenize(css)
+      {:ok, tokens} = StylesheetParser.tokenize(css)
       {:ok, at_rule, _rest} = Parser.build_at_rule(tokens)
 
       refute at_rule.block
@@ -123,7 +123,7 @@ defmodule CssParser.ParserTest do
       }
       """
 
-      {:ok, tokens} = CssParser.tokenize(css)
+      {:ok, tokens} = StylesheetParser.tokenize(css)
       {:ok, at_rule, _rest} = Parser.build_at_rule(tokens)
 
       assert at_rule.name == "@media"

@@ -1,9 +1,9 @@
-defmodule CssParserTest do
+defmodule StylesheetParserTest do
   use ExUnit.Case
-  doctest CssParser
-  alias CssParser.{AtRule, Declaration, QualifiedRule, Function, SimpleBlock, Stylesheet}
-  alias CssParser.{ComplexSelector, CompoundSelector, SimpleSelector}
-  alias CssParser.Syntax.Parser.ParseError
+  doctest StylesheetParser
+  alias StylesheetParser.{AtRule, Declaration, QualifiedRule, Function, SimpleBlock, Stylesheet}
+  alias StylesheetParser.{ComplexSelector, CompoundSelector, SimpleSelector}
+  alias StylesheetParser.ParseError
 
   describe "parse_stylesheet" do
     test "returns atrule from @import with toplevel as true" do
@@ -11,7 +11,7 @@ defmodule CssParserTest do
       @import "https://www.w3.org/StyleSheets/TR/2016/base.css";
       """
 
-      assert {:ok, %Stylesheet{rules: [at_rule]}} = CssParser.parse_stylesheet(css)
+      assert {:ok, %Stylesheet{rules: [at_rule]}} = StylesheetParser.parse_stylesheet(css)
 
       assert %AtRule{
                top_level: true,
@@ -44,7 +44,8 @@ defmodule CssParserTest do
       }
       """
 
-      assert {:ok, %Stylesheet{rules: [one, two]} = stylesheet} = CssParser.parse_stylesheet(css)
+      assert {:ok, %Stylesheet{rules: [one, two]} = stylesheet} =
+               StylesheetParser.parse_stylesheet(css)
 
       assert %QualifiedRule{
                top_level: true,
@@ -97,7 +98,7 @@ defmodule CssParserTest do
       }
       """
 
-      assert {:ok, %Stylesheet{rules: [root, media]}} = CssParser.parse_stylesheet(css)
+      assert {:ok, %Stylesheet{rules: [root, media]}} = StylesheetParser.parse_stylesheet(css)
 
       assert %QualifiedRule{prelude: [%SimpleSelector{type: :pseudo_class, value: ":root"}]} =
                root
@@ -141,7 +142,7 @@ defmodule CssParserTest do
       css = "@keyframes spin { from { opacity: 0; } 50% { opacity: 0.5; } }"
 
       assert {:ok, %Stylesheet{rules: [%AtRule{block: [from, half]}], errors: []}} =
-               CssParser.parse_stylesheet(css)
+               StylesheetParser.parse_stylesheet(css)
 
       assert %QualifiedRule{prelude: [ident: "from"]} = from
 
@@ -157,7 +158,7 @@ defmodule CssParserTest do
             {".card", ["1:1: expected { after the selector"]},
             {"#1a { color: red }", ["1:1: invalid selector"]}
           ] do
-        assert {:ok, %Stylesheet{errors: errors}} = CssParser.parse_stylesheet(css)
+        assert {:ok, %Stylesheet{errors: errors}} = StylesheetParser.parse_stylesheet(css)
         assert Enum.map(errors, &Exception.message/1) == messages, css
       end
     end
@@ -167,7 +168,7 @@ defmodule CssParserTest do
               %Stylesheet{
                 rules: [%QualifiedRule{block: [%Declaration{name: "color"}]}],
                 errors: [%ParseError{message: "unclosed {", line: 1, column: 7}]
-              }} = CssParser.parse_stylesheet(".card {\n  color: red;\n")
+              }} = StylesheetParser.parse_stylesheet(".card {\n  color: red;\n")
     end
   end
 
@@ -175,7 +176,7 @@ defmodule CssParserTest do
     test "returns a function and serializes" do
       css = "color: rgb(0,1,2, 0.5);"
 
-      assert {:ok, declaration} = CssParser.parse_declaration(css)
+      assert {:ok, declaration} = StylesheetParser.parse_declaration(css)
       assert %Declaration{value: [%Function{name: "rgb", line: 1, column: 8}]} = declaration
       assert to_string(declaration) == "color: rgb(0,1,2, 0.5);"
     end
@@ -185,7 +186,7 @@ defmodule CssParserTest do
     test "returns a declaration and serializes" do
       css = "    display: block  "
 
-      assert {:ok, declaration} = CssParser.parse_declaration(css)
+      assert {:ok, declaration} = StylesheetParser.parse_declaration(css)
 
       assert %Declaration{
                name: "display",
@@ -201,7 +202,7 @@ defmodule CssParserTest do
     test "returns an important declaration" do
       css = "    color: #fefefe   !important "
 
-      assert {:ok, declaration} = CssParser.parse_declaration(css)
+      assert {:ok, declaration} = StylesheetParser.parse_declaration(css)
       assert %Declaration{name: "color", important: true, value: [hash: "#fefefe"]} = declaration
       assert to_string(declaration) == "color: #fefefe !important;"
     end
@@ -211,7 +212,7 @@ defmodule CssParserTest do
     test "returns a declaration" do
       css = "    display: block;  color: #fefefe;  "
 
-      assert {:ok, declarations, []} = CssParser.parse_declarations(css)
+      assert {:ok, declarations, []} = StylesheetParser.parse_declarations(css)
 
       assert [
                %Declaration{name: "display", important: false, value: [ident: "block"]},
@@ -224,7 +225,7 @@ defmodule CssParserTest do
     test "returns important declarations" do
       css = "display: block;    color: #fefefe   !important "
 
-      assert {:ok, declarations, []} = CssParser.parse_declarations(css)
+      assert {:ok, declarations, []} = StylesheetParser.parse_declarations(css)
 
       assert [
                %Declaration{name: "display", important: false, value: [ident: "block"]},
@@ -237,7 +238,7 @@ defmodule CssParserTest do
 
     test "returns the errors of what it dropped" do
       assert {:ok, [%Declaration{name: "color"}], [error]} =
-               CssParser.parse_declarations("margin 0; color: red")
+               StylesheetParser.parse_declarations("margin 0; color: red")
 
       assert Exception.message(error) == "1:1: expected : after margin"
     end
@@ -251,7 +252,7 @@ defmodule CssParserTest do
       }
       """
 
-      assert {:ok, at_rule} = CssParser.parse_rule(css)
+      assert {:ok, at_rule} = StylesheetParser.parse_rule(css)
 
       assert %AtRule{
                top_level: false,
@@ -268,7 +269,7 @@ defmodule CssParserTest do
       assert to_string(at_rule) == "@media print { #navigation { display: none; } }"
 
       assert {:error, %ParseError{message: "expected one rule", line: 5}} =
-               CssParser.parse_rule(
+               StylesheetParser.parse_rule(
                  css <> "\n@media (width < 1024px) { #navigation { display: block; } }"
                )
     end
@@ -286,7 +287,7 @@ defmodule CssParserTest do
       }
       """
 
-      assert {:ok, [print, width], []} = CssParser.parse_rules(css)
+      assert {:ok, [print, width], []} = StylesheetParser.parse_rules(css)
       assert %AtRule{top_level: false, name: "@media", prelude: [ident: "print"], line: 1} = print
 
       assert %AtRule{
@@ -314,14 +315,14 @@ defmodule CssParserTest do
 
   describe "parse_rules errors" do
     test "returns the errors of what it dropped" do
-      assert {:ok, [%QualifiedRule{}], [error]} = CssParser.parse_rules("#1a { } b { }")
+      assert {:ok, [%QualifiedRule{}], [error]} = StylesheetParser.parse_rules("#1a { } b { }")
       assert Exception.message(error) == "1:1: invalid selector"
     end
   end
 
   describe "positions" do
     test "each token starts at its line and column, past comments" do
-      assert {:ok, tokens} = CssParser.tokenize("a {\n  /* note\n */ b: 1e+5;\n}")
+      assert {:ok, tokens} = StylesheetParser.tokenize("a {\n  /* note\n */ b: 1e+5;\n}")
 
       assert [
                {:ident, "a", [line: 1, column: 1]},
@@ -352,7 +353,7 @@ defmodule CssParserTest do
       }
       """
 
-      assert {:ok, result} = CssParser.tokenize(css)
+      assert {:ok, result} = StylesheetParser.tokenize(css)
 
       assert plain(result) == [
                {:ident, "pre"},
@@ -406,7 +407,7 @@ defmodule CssParserTest do
     test "tokenizes CSS in style tag" do
       css = "padding: 0.5em; margin: 1em 0; position: relative; clear: both; color: #600;"
 
-      assert {:ok, result} = CssParser.tokenize(css)
+      assert {:ok, result} = StylesheetParser.tokenize(css)
 
       assert plain(result) == [
                {:ident, "padding"},
@@ -468,6 +469,15 @@ defmodule CssParserTest do
             {~S|url("a.png")|, [function: "url(", string: ~S("a.png"), rparen: ")"]},
             {"url(a b)", [bad_url: "url(a b)"]},
             {"url(a", [url: "url(a"]},
+            # ...and `url` with escapes in it, once they're decoded.
+            {~S"u\72l(x)", [url: ~S"u\72l(x)"]},
+            {~S"\75 rl(x)", [url: ~S"\75 rl(x)"]},
+            {~S"U\52L(x)", [url: ~S"U\52L(x)"]},
+            {~S"\000075rl(x)", [url: ~S"\000075rl(x)"]},
+            {~S"\u\r\l(x)", [url: ~S"\u\r\l(x)"]},
+            {~S"\0000075rl(x)", [function: ~S"\0000075rl(", ident: "x", rparen: ")"]},
+            {~S"u\72lx(x)", [function: ~S"u\72lx(", ident: "x", rparen: ")"]},
+            {~S|u\72l("x")|, [function: ~S"u\72l(", string: ~S("x"), rparen: ")"]},
             # Numbers
             {"1.", [number: "1", delim: "."]},
             {"1e3 1em -.5%",
@@ -491,8 +501,36 @@ defmodule CssParserTest do
              ]},
             {<<"a", 0, "b">>, [ident: "a�b"]}
           ] do
-        assert {:ok, result} = CssParser.tokenize(css)
+        assert {:ok, result} = StylesheetParser.tokenize(css)
         assert plain(result) == tokens, inspect(css)
+      end
+    end
+  end
+
+  describe "unescape" do
+    test "decodes escapes as the spec consumes an escaped code point" do
+      for {text, decoded} <- [
+            {"plain", "plain"},
+            {~S"b\65havior", "behavior"},
+            {~S"\31 0", "10"},
+            {~S"\31  0", "1 0"},
+            {"\\31\t0", "10"},
+            {"\\31\n0", "10"},
+            {~S"\000031", "1"},
+            {~S"\0000311", "11"},
+            # `a` is a hex digit, so `\a` is U+000A.
+            {~S"\a\:b", "\n:b"},
+            {~S"\:\.\\", ":.\\"},
+            {~S"\1F600", "😀"},
+            {~S"caf\E9", "café"},
+            {~S"\0", "\uFFFD"},
+            {~S"\D800", "\uFFFD"},
+            {~S"\110000", "\uFFFD"},
+            {"a\\", "a\uFFFD"},
+            {"\"a\\\nb\"", "\"ab\""},
+            {~S"日\672C", "日本"}
+          ] do
+        assert StylesheetParser.unescape(text) == decoded, inspect(text)
       end
     end
   end
@@ -500,7 +538,9 @@ defmodule CssParserTest do
   describe "parse_stylesheet, recovering" do
     test "a malformed declaration is dropped, and the rest kept" do
       assert {:ok, %Stylesheet{rules: [a, b], errors: errors}} =
-               CssParser.parse_stylesheet("a { color red; *zoom: 1; margin: 0 } b { x: y }")
+               StylesheetParser.parse_stylesheet(
+                 "a { color red; *zoom: 1; margin: 0 } b { x: y }"
+               )
 
       assert %QualifiedRule{block: [%Declaration{name: "margin"}]} = a
       assert %QualifiedRule{block: [%Declaration{name: "x"}]} = b
@@ -515,7 +555,7 @@ defmodule CssParserTest do
                 rules: [%QualifiedRule{prelude: [%SimpleSelector{value: "b"}]}],
                 errors: [error]
               }} =
-               CssParser.parse_stylesheet("a, { color: red } b { color: blue }")
+               StylesheetParser.parse_stylesheet("a, { color: red } b { color: blue }")
 
       assert Exception.message(error) == "1:1: invalid selector"
     end
@@ -524,7 +564,8 @@ defmodule CssParserTest do
       css =
         "a { color: red; &:hover { color: blue } > b { x: y } .c { x: y } @media print { color: green } }"
 
-      assert {:ok, %Stylesheet{rules: [rule], errors: []}} = CssParser.parse_stylesheet(css)
+      assert {:ok, %Stylesheet{rules: [rule], errors: []}} =
+               StylesheetParser.parse_stylesheet(css)
 
       assert %QualifiedRule{
                block: [
@@ -551,12 +592,12 @@ defmodule CssParserTest do
     test "a custom property's value may be a {} block" do
       assert {:ok,
               %Stylesheet{rules: [%QualifiedRule{block: [%Declaration{name: "--x"}]}], errors: []}} =
-               CssParser.parse_stylesheet("a { --x: { b: c } }")
+               StylesheetParser.parse_stylesheet("a { --x: { b: c } }")
     end
 
     test "url() with a quoted string is a function" do
       assert {:ok, %Stylesheet{rules: [%QualifiedRule{block: [declaration]}]}} =
-               CssParser.parse_stylesheet(~S|a { background: url("x.png") }|)
+               StylesheetParser.parse_stylesheet(~S|a { background: url("x.png") }|)
 
       assert %Declaration{value: [%Function{name: "url", value: [string: ~S("x.png")]}]} =
                declaration
@@ -566,23 +607,122 @@ defmodule CssParserTest do
   describe "serializing" do
     test "tokens a comment separated stay separate" do
       assert {:ok, stylesheet} =
-               CssParser.parse_stylesheet("a { margin: 1px/**/2px; font: x/**/y }")
+               StylesheetParser.parse_stylesheet("a { margin: 1px/**/2px; font: x/**/y }")
 
       assert to_string(stylesheet) == "a { margin: 1px/**/2px; font: x/**/y; }"
-      assert {:ok, again} = CssParser.parse_stylesheet(to_string(stylesheet))
+      assert {:ok, again} = StylesheetParser.parse_stylesheet(to_string(stylesheet))
       assert to_string(again) == to_string(stylesheet)
     end
   end
 
-  describe "smoke test" do
-    test "a stylesheet serializes to CSS that parses to the same rules" do
-      css = File.read!("priv/sample.css")
-      assert {:ok, stylesheet} = CssParser.parse_stylesheet(css)
-      serialized = to_string(stylesheet)
-      assert {:ok, again} = CssParser.parse_stylesheet(serialized)
-      assert to_string(again) == serialized
+  describe "walking rules and declarations" do
+    @css "a { x: 1; b { y: 2 } } @media print { c { z: 3 } } @import 'q';"
+
+    test "pre comes before a rule's children, post after them" do
+      {:ok, stylesheet} = StylesheetParser.parse_stylesheet(@css)
+
+      {_stylesheet, visits} =
+        StylesheetParser.traverse(
+          stylesheet,
+          [],
+          fn node, visits -> {node, [{:pre, label(node)} | visits]} end,
+          fn node, visits -> {node, [{:post, label(node)} | visits]} end
+        )
+
+      assert visits |> Enum.reverse() |> Enum.filter(&match?({:pre, _}, &1)) |> Keyword.values() ==
+               ["a", "x", "b", "y", "@media", "c", "z", "@import"]
+
+      assert visits |> Enum.reverse() |> Enum.filter(&match?({:post, _}, &1)) |> Keyword.values() ==
+               ["x", "y", "b", "a", "z", "c", "@media", "@import"]
+    end
+
+    test "dropping a rule before its children doesn't walk them" do
+      {:ok, stylesheet} = StylesheetParser.parse_stylesheet(@css)
+
+      {walked, visited} =
+        StylesheetParser.traverse(
+          stylesheet,
+          [],
+          fn
+            %AtRule{name: "@media"}, visited -> {nil, visited}
+            node, visited -> {node, [label(node) | visited]}
+          end,
+          fn node, visited -> {node, visited} end
+        )
+
+      refute "c" in visited
+      assert to_string(walked) == "a { x: 1; b { y: 2; } }\n@import 'q';"
+    end
+
+    test "postwalk sees a rule after its children are walked" do
+      {:ok, stylesheet} = StylesheetParser.parse_stylesheet(@css)
+
+      # Rules left empty once their declarations are dropped are dropped too.
+      emptied =
+        StylesheetParser.postwalk(stylesheet, fn
+          %Declaration{name: name} when name in ["y", "z"] -> nil
+          %QualifiedRule{block: []} -> nil
+          %AtRule{block: []} -> nil
+          node -> node
+        end)
+
+      assert to_string(emptied) == "a { x: 1; }\n@import 'q';"
+    end
+
+    test "walks lists and single rules and declarations, and keeps a stylesheet's errors" do
+      drop_x = fn
+        %Declaration{name: "x"} -> nil
+        node -> node
+      end
+
+      {:ok, declarations, []} = StylesheetParser.parse_declarations("x: 1; y: 2")
+      assert [%Declaration{name: "y"}] = StylesheetParser.prewalk(declarations, drop_x)
+
+      {:ok, rule} = StylesheetParser.parse_rule("a { x: 1; y: 2 }")
+      assert to_string(StylesheetParser.prewalk(rule, drop_x)) == "a { y: 2; }"
+
+      {:ok, declaration} = StylesheetParser.parse_declaration("x: 1")
+      assert StylesheetParser.prewalk(declaration, drop_x) == nil
+
+      {:ok, stylesheet} = StylesheetParser.parse_stylesheet("a { x: 1; oops; y: 2 }")
+      assert %Stylesheet{errors: [_error]} = StylesheetParser.prewalk(stylesheet, drop_x)
     end
   end
+
+  defp label(%Declaration{name: name}), do: name
+  defp label(%AtRule{name: name}), do: name
+  defp label(%QualifiedRule{prelude: [selector]}), do: to_string(selector)
+
+  describe "round trip" do
+    for fixture <- ["priv/sample.css", "test/fixtures/round_trip.css"] do
+      test "#{fixture} serializes to CSS that parses to the same rules" do
+        assert {:ok, %Stylesheet{rules: [_ | _], errors: []} = stylesheet} =
+                 unquote(fixture) |> File.read!() |> StylesheetParser.parse_stylesheet()
+
+        assert {:ok, %Stylesheet{errors: []} = again} =
+                 stylesheet |> to_string() |> StylesheetParser.parse_stylesheet()
+
+        assert without_positions(again) == without_positions(stylesheet)
+      end
+    end
+  end
+
+  # Serializing normalizes whitespace, so what parses again starts at other lines and columns.
+  defp without_positions(%{__struct__: _} = struct) do
+    struct
+    |> Map.to_list()
+    |> Map.new(fn
+      {key, _position} when key in [:line, :column] -> {key, nil}
+      {key, value} -> {key, without_positions(value)}
+    end)
+  end
+
+  defp without_positions(list) when is_list(list), do: Enum.map(list, &without_positions/1)
+
+  defp without_positions(tuple) when is_tuple(tuple),
+    do: tuple |> Tuple.to_list() |> without_positions() |> List.to_tuple()
+
+  defp without_positions(other), do: other
 
   defp plain(tokens), do: Enum.map(tokens, fn {type, value, _metadata} -> {type, value} end)
 end

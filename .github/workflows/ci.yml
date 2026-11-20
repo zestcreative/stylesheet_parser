@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported, and the newest, which also checks formatting, docs and the
+          # generated tokenizer.
+          - elixir: "1.17.3"
+            otp: "26"
+          - elixir: "1.20.2"
+            otp: "29"
+            lint: true
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('mix.lock') }}
+
+      - run: mix deps.get
+      - run: mix format --check-formatted
+        if: matrix.lint
+      - run: mix compile --warnings-as-errors
+      - run: mix test --warnings-as-errors
+
+      - name: The generated tokenizer matches its template
+        if: matrix.lint
+        env:
+          MIX_ENV: dev
+        run: |
+          mix deps.get
+          cp lib/stylesheet_parser/syntax/tokenizer.ex "$RUNNER_TEMP/tokenizer.ex"
+          mix nimble_parsec.compile lib/stylesheet_parser/syntax/tokenizer.ex.exs
+          mix format lib/stylesheet_parser/syntax/tokenizer.ex
+          # The first two lines say when it was generated.
+          diff <(tail -n +3 "$RUNNER_TEMP/tokenizer.ex") <(tail -n +3 lib/stylesheet_parser/syntax/tokenizer.ex)
+
+      - name: Docs build without warnings
+        if: matrix.lint
+        env:
+          MIX_ENV: dev
+        run: mix docs --warnings-as-errors

@@ -1,17 +1,53 @@
-defmodule CssParser.Syntax.Tokenizer do
-  @moduledoc """
+defmodule StylesheetParser.Syntax.Tokenizer do
+  @moduledoc ~S"""
   The [tokenizer](https://www.w3.org/TR/css-syntax-3/#tokenization) of CSS Syntax Level 3, over
-  preprocessed input (`CssParser.tokenize/1` turns `\\r\\n`, `\\r` and `\\f` into `\\n` and NUL into
+  preprocessed input (`StylesheetParser.tokenize/1` turns `\r\n`, `\r` and `\f` into `\n` and NUL into
   U+FFFD).
 
-  Each token's value is its source text: a string keeps its quotes, and escapes stay escaped.
-  Comments are dropped, an unclosed one running to the end. A string with a newline in it is a
-  `:bad_string`, and a `url(` with whitespace or a quote inside is a `:bad_url`.
+  Each token is `{type, value, [line: line, column: column]}`, where it starts, columns counting
+  bytes from 1. Its value is its source text: a string keeps its quotes, and escapes stay escaped
+  (`StylesheetParser.unescape/1` decodes them). Comments are dropped, an unclosed one running to
+  the end.
+
+  | Type | Value | Such as |
+  | --- | --- | --- |
+  | `:ident` | the name | `color`, `--gap`, `\31 0` |
+  | `:function` | the name and its `(`; a `StylesheetParser.Function` among component values | `var(` |
+  | `:at_keyword` | the name and its `@` | `@media` |
+  | `:hash` | the name and its `#` | `#main`, `#f00` |
+  | `:string` | the string, with its quotes | `"a.png"` |
+  | `:bad_string` | a string with a newline in it, up to the newline | `"a` |
+  | `:url` | the whole `url()` without quotes, or with escapes in `url` | `url(a.png)`, `u\72l(a.png)` |
+  | `:bad_url` | a `url()` with whitespace, a quote or a `(` inside | `url(a b)` |
+  | `:number` | the number | `12`, `-0.5`, `1e3` |
+  | `:percentage` | the number, without its `%` | `50` for `50%` |
+  | `:dimension` | `[number, unit]` | `["1", "px"]` |
+  | `:whitespace` | the whitespace | `" "`, `"\n  "` |
+  | `:delim` | any other code point | `>`, `.`, `!` |
+  | `:colon`, `:semicolon`, `:comma` | `:`, `;`, `,` | |
+  | `:lparen`, `:rparen`, `:lbracket`, `:rbracket`, `:lcurly`, `:rcurly` | the bracket; a `StylesheetParser.SimpleBlock` among component values | `(` |
+  | `:cdo`, `:cdc` | `<!--`, `-->` | |
+  | `:urange` | a unicode range, only in a `unicode-range` declaration's value | `U+0-7F` |
+
+      iex> StylesheetParser.tokenize("a { margin: 1px }")
+      {:ok,
+       [
+         {:ident, "a", [line: 1, column: 1]},
+         {:whitespace, " ", [line: 1, column: 2]},
+         {:lcurly, "{", [line: 1, column: 3]},
+         {:whitespace, " ", [line: 1, column: 4]},
+         {:ident, "margin", [line: 1, column: 5]},
+         {:colon, ":", [line: 1, column: 11]},
+         {:whitespace, " ", [line: 1, column: 12]},
+         {:dimension, ["1", "px"], [line: 1, column: 13]},
+         {:whitespace, " ", [line: 1, column: 16]},
+         {:rcurly, "}", [line: 1, column: 17]}
+       ]}
   """
 
   # The template for `tokenizer.ex`, so NimbleParsec isn't needed at runtime. After changing it:
   #
-  #     mix nimble_parsec.compile lib/css_parser/syntax/tokenizer.ex.exs
+  #     mix nimble_parsec.compile lib/stylesheet_parser/syntax/tokenizer.ex.exs
 
   @doc false
   # Each token as `{type, value, metadata}`, like Elixir AST: `[line: l, column: c]` where it
@@ -19,7 +55,7 @@ defmodule CssParser.Syntax.Tokenizer do
   def at([{[{[], {line, line_offset}}], offset}, {type, value}]),
     do: {type, value, [line: line, column: offset - line_offset + 1]}
 
-  # parsec:CssParser.Syntax.Tokenizer
+  # parsec:StylesheetParser.Syntax.Tokenizer
   import NimbleParsec
 
   # 4.2. Definitions
@@ -104,12 +140,33 @@ defmodule CssParser.Syntax.Tokenizer do
   dimension_token = concat(number, ident)
   percentage_token = number |> ignore(string("%"))
 
-  # 4.3.4. Consume an ident-like token: `url(` is a url token unless a quote follows it, and then
-  # it's a function token like any other.
+  # 4.3.4. Consume an ident-like token: an ident that is `url` once its escapes are decoded, and
+  # `(`, is a url token unless a quote follows it, and then it's a function token like any other.
+  # Each letter of `url` is in either case, `\` and the letter, or `\` and its hex digits, after
+  # zeros up to six digits and with one whitespace after them, as `u\72l(` or `\75 rl(`.
+  url_letter = fn letter ->
+    cases = [letter, letter - 32]
+
+    hex =
+      Enum.flat_map(cases, fn code_point ->
+        digits = Integer.to_string(code_point, 16)
+        Enum.uniq([String.downcase(digits), String.upcase(digits)])
+      end)
+
+    choice([
+      ascii_string(cases, 1),
+      string("\\") |> ascii_string(cases, 1),
+      string("\\")
+      |> times(string("0"), max: 4)
+      |> choice(Enum.map(hex, &string/1))
+      |> optional(whitespace)
+    ])
+  end
+
   url_open =
-    ascii_string([?u, ?U], 1)
-    |> ascii_string([?r, ?R], 1)
-    |> ascii_string([?l, ?L], 1)
+    url_letter.(?u)
+    |> concat(url_letter.(?r))
+    |> concat(url_letter.(?l))
     |> string("(")
     |> repeat(whitespace)
 
@@ -192,5 +249,5 @@ defmodule CssParser.Syntax.Tokenizer do
     )
   )
 
-  # parsec:CssParser.Syntax.Tokenizer
+  # parsec:StylesheetParser.Syntax.Tokenizer
 end

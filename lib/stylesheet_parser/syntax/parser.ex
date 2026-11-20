@@ -1,4 +1,4 @@
-defmodule CssParser.Syntax.Parser do
+defmodule StylesheetParser.Syntax.Parser do
   @moduledoc """
   The parsing algorithms of [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/#parsing), as
   its current draft has them with [CSS Nesting](https://www.w3.org/TR/css-nesting-1/), over the
@@ -8,7 +8,7 @@ defmodule CssParser.Syntax.Parser do
   The component values inside them (a declaration's value, an at-rule's prelude, a block's or a
   function's value) are `{type, value}`, without positions.
 
-  A qualified rule's prelude is its selector list (`CssParser.Selector.Parser`), with relative
+  A qualified rule's prelude is its selector list (`StylesheetParser.Selector.Parser`), with relative
   selectors such as `> a` when it's nested in a style rule, or in `@keyframes` its component
   values, such as `50%`. A block, a style rule's or an at-rule's, is its declarations and rules in
   order.
@@ -16,31 +16,33 @@ defmodule CssParser.Syntax.Parser do
   Malformed input is dropped, as the spec recovers from it: a declaration with no colon, anything
   else where a declaration belongs, a rule whose selectors don't parse or that ends before its
   block. An unclosed block or function closes at the end of the input. `parse_stylesheet/1` keeps
-  each as a `CssParser.Syntax.Parser.ParseError` in the stylesheet's `errors`, with the line and
+  each as a `StylesheetParser.ParseError` in the stylesheet's `errors`, with the line and
   column where it is; `parse_rules/2` and `parse_declarations/1` return them with their results.
+
+  `StylesheetParser` tokenizes CSS and parses it with these; they're for parsing tokens you
+  already have:
+
+      iex> {:ok, tokens} = StylesheetParser.tokenize("a { color: red } @media print { a { color: black } }")
+      iex> {:ok, stylesheet} = StylesheetParser.Syntax.Parser.parse_stylesheet(tokens)
+      iex> Enum.map(stylesheet.rules, &to_string/1)
+      ["a { color: red; }", "@media print { a { color: black; } }"]
+      iex> {:ok, rule, rest} = StylesheetParser.Syntax.Parser.build_qualified_rule(tokens)
+      iex> {to_string(rule), hd(rest)}
+      {"a { color: red; }", {:whitespace, " ", [line: 1, column: 17]}}
   """
 
-  alias CssParser.Selector.Parser, as: Selector
+  alias StylesheetParser.Selector.Parser, as: Selector
 
-  alias CssParser.{
+  alias StylesheetParser.{
     AtRule,
     Declaration,
+    ParseError,
     QualifiedRule,
     Function,
     Serialize,
     SimpleBlock,
     Stylesheet
   }
-
-  defmodule ParseError do
-    defexception [:message, :line, :column]
-
-    @impl true
-    def message(%{message: message, line: nil}), do: message
-
-    def message(%{message: message, line: line, column: column}),
-      do: "#{line}:#{column}: #{message}"
-  end
 
   @doc """
   # 5.3.2. Parse a stylesheet

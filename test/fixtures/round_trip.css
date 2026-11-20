@@ -1,0 +1,141 @@
+@charset "utf-8";
+@import url("theme.css") layer(base) supports(display: grid) screen and (min-width: 600px);
+@import 'print.css' print;
+@namespace svg url(http://www.w3.org/2000/svg);
+@layer reset, base, components;
+
+<!--
+/* CDO and CDC are skipped at the top level. */
+-->
+
+/* Custom properties, whose values may be any tokens, a {} block among them. */
+:root {
+  --brand: #ff0000;
+  --gap: calc(1rem + 2px);
+  --json: { "a": 1, "b": [true] };
+  --mixed: a { b } c;
+  --empty:;
+  --UPPER-case: 1;
+}
+
+/* Selectors */
+*,
+*::before,
+*::after { box-sizing: border-box }
+
+html|*, svg|circle, *|*, |p { color: inherit }
+h1, /* between */ h2,
+h3 { margin: 0 }
+.a\:hover\:bg-blue:hover, .\31 0, #\31 23, .日本語, .even-row, #main { color: blue }
+a[href^="https://" i], a[href$='.pdf' s], a[title~=x], a[lang|=en], a[data-x*="y"], [data-y], [xml|lang], [*|att], [|att] { text-decoration: none }
+ul > li + li ~ li, col.selected || td { padding: 0 }
+a:hover::before, input::placeholder:hover, p:first-line, p::-webkit-scrollbar { content: "" }
+my-element::part(label):hover, ::slotted(span), video::cue(b) { color: red }
+li:nth-child(2n + 1 of .item), li:nth-last-child(-n+3), tr:nth-of-type(odd), p:nth-last-of-type(3), li:nth-child(even of :not(.x)) { color: gray }
+:where(ul, ol) :where(ul, ol), :is(h1, h2):not(.a, .b > c), a:has(> img), p:lang(zh, "*-hant"), p:dir(rtl) { margin: 0 }
+
+/* Declarations and their values */
+.values {
+  color: red !important;
+  background-color: rgb(0 0 0 / 50%) ! IMPORTANT;
+  margin: -0.5e-2px +.5em 1E3px 10%;
+  width: calc(100% - (2 * var(--gap, 1rem)));
+  font: italic bold 12px/1.5 "Helvetica Neue", sans-serif;
+  grid-area: 1 / 2 / 3 / 4;
+  aspect-ratio: 16/9;
+  grid-template-areas:
+    "header header"
+    "sidebar main";
+  transition: opacity .3s ease-in-out,transform 1e-3s;
+  content: "a\"b" 'c\'d' "\201C" "→" "\
+continued";
+  background: url(a.png), url( "b c.png" ), URL(data:image/png;base64,iVBORw0KGgo=);
+  filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#80000000', endColorstr='#80000000');
+  margin: 1px/**/2px;
+  font-family: x/**/y;
+	tab-size: 4;
+}
+
+/* At-rules */
+@font-face {
+  font-family: "Bengali";
+  src: local("Bengali"), url(fonts/bengali.woff2) format("woff2");
+  unicode-range: U+00-FF, U+980-9FF, U+4??;
+  font-display: swap;
+}
+
+@media screen and (min-width: 600px), print and (orientation: landscape) {
+  .card { padding: 2rem }
+}
+
+@media (400px <= width <= 700px) {
+  @media (prefers-color-scheme: dark) { .card { color: white } }
+}
+
+@supports not (display: grid) and selector(:has(a)) {
+  .grid { float: left }
+}
+
+@container sidebar (min-width: 400px) {
+  .card { display: grid }
+}
+
+@layer base {
+  html { color: black }
+}
+
+@scope (.card) to (.content) {
+  img { border: 1px solid }
+}
+
+@starting-style {
+  .dialog { opacity: 0 }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg) }
+  0%, 50.5% { opacity: 1 }
+  to { transform: rotate(360deg) }
+}
+
+@-webkit-keyframes pulse {
+  0% { opacity: 1 }
+  100% { opacity: 0 }
+}
+
+@page :first {
+  margin: 1in;
+  @top-center { content: "Title" }
+}
+
+@property --angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@counter-style thumbs {
+  system: cyclic;
+  symbols: "👍";
+  suffix: " ";
+}
+
+@font-feature-values Font One {
+  @swash { fancy: 1 }
+}
+
+/* Nesting */
+.card {
+  color: red;
+  & > .title { font-weight: bold }
+  .dark & { color: white }
+  &:is(:hover, :focus-visible) { outline: 1px solid }
+  + .card { margin-top: 0 }
+  > p, ~ span { margin: 0 }
+  @media (width > 600px) {
+    padding: 2rem;
+    .title { font-size: 2em }
+  }
+  @supports (display: grid) { display: grid }
+  &.active { color: green; & .icon { fill: currentColor } }
+}

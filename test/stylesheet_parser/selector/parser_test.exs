@@ -1,8 +1,15 @@
-defmodule CssParser.Selector.ParserTest do
+defmodule StylesheetParser.Selector.ParserTest do
   use ExUnit.Case
 
-  alias CssParser.{ComplexSelector, CompoundSelector, Function, PseudoClass, SimpleSelector}
-  alias CssParser.Selector.Parser
+  alias StylesheetParser.{
+    ComplexSelector,
+    CompoundSelector,
+    Function,
+    PseudoClass,
+    SimpleSelector
+  }
+
+  alias StylesheetParser.Selector.Parser
 
   # Each selector parses completely and serializes back, with spaces around combinators.
   @round_trips [
@@ -52,6 +59,9 @@ defmodule CssParser.Selector.ParserTest do
     {~s|E[foo\|="bar"]|, ~s|E[foo\|="bar"]|},
     {~s|E[foo="bar" i]|, ~s|E[foo="bar" i]|},
     {~s|E[foo="bar" s]|, ~s|E[foo="bar" s]|},
+    {"ns|*", "ns|*"},
+    {"*|*", "*|*"},
+    {"ns|E", "ns|E"},
     {"E[foo=bar]", "E[foo=bar]"},
     {~s|E[ foo = "bar" I ]|, ~s|E[foo="bar" I]|},
     {"E::part(label)", "E::part(label)"},
@@ -204,7 +214,7 @@ defmodule CssParser.Selector.ParserTest do
 
   # Selectors parse component values, as a rule's prelude is.
   defp tokenize(css) do
-    {:ok, values} = CssParser.parse_component_values(css)
+    {:ok, values} = StylesheetParser.parse_component_values(css)
     values
   end
 end
